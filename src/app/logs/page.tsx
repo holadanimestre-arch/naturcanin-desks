@@ -72,7 +72,7 @@ export default async function LogsPage({
     <div className="nc-app-shell">
       <Sidebar active="logs" />
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
-        <TopBar title="Logs del sistema" userName={profile?.name ?? ""} userId={user.id} />
+        <TopBar title="Logs del sistema" subtitle="Solo admin" showAdd={false} />
         <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px" }}>
 
           {/* Filtros de nivel */}
