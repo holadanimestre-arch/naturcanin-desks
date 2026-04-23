@@ -12,7 +12,6 @@ export default async function ChatPage() {
   // Round 1 – en paralelo: perfil, memberships del usuario y equipo
   const [profileRes, myMembershipsRes, team] = await Promise.all([
     supabase.from("profiles").select("name").eq("id", user.id).single(),
-    // Fuente de verdad: canales a los que el usuario pertenece explícitamente
     supabase
       .from("chat_channel_members")
       .select("channel_id")
@@ -27,21 +26,14 @@ export default async function ChatPage() {
     myIds.length > 0
       ? supabase
           .from("chat_channels")
-          .select(`
-            id, name, description, is_dm, dm_key,
-            chat_channel_members(user_id, profiles(name))
-          `)
+          .select(`id, name, description, is_dm, dm_key, chat_channel_members(user_id, profiles(name))`)
           .in("id", myIds)
           .order("name", { ascending: true })
       : Promise.resolve({ data: [] as any[] }),
 
-    // Canales sin ningún miembro: accesibles para todos (canales legacy/públicos)
     supabase
       .from("chat_channels")
-      .select(`
-        id, name, description, is_dm, dm_key,
-        chat_channel_members(user_id, profiles(name))
-      `)
+      .select(`id, name, description, is_dm, dm_key, chat_channel_members(user_id, profiles(name))`)
       .eq("is_dm", false)
       .order("name", { ascending: true }),
   ]);
@@ -68,13 +60,29 @@ export default async function ChatPage() {
   const myChannelsRaw = (myChannelsRes.data ?? []) as unknown as RawChannel[];
   const legacyRaw = (legacyRes.data ?? []) as unknown as RawChannel[];
 
-  // Legacy = sin miembros Y no ya incluido en mis canales
   const myIdSet = new Set(myIds);
   const legacyOnly = legacyRaw.filter(
     (c) => !myIdSet.has(c.id) && (c.chat_channel_members ?? []).length === 0
   );
 
   const allRaw = [...myChannelsRaw, ...legacyOnly];
+  const allIds = allRaw.map((c) => c.id);
+
+  // Round 3 – último mensaje de cada canal
+  const { data: recentMsgs } = allIds.length > 0
+    ? await supabase
+        .from("chat_messages")
+        .select("channel_id, text, created_at, user_id")
+        .in("channel_id", allIds)
+        .order("created_at", { ascending: false })
+        .limit(allIds.length * 3)
+    : { data: [] as any[] };
+
+  // Quedarnos solo con el último por canal
+  const lastMsgMap = new Map<number, { text: string; created_at: string; user_id: string | null }>();
+  for (const m of (recentMsgs ?? []) as any[]) {
+    if (!lastMsgMap.has(m.channel_id)) lastMsgMap.set(m.channel_id, m);
+  }
 
   const channels: Array<{
     id: number;
@@ -83,6 +91,7 @@ export default async function ChatPage() {
     is_dm: boolean;
     members: MemberLite[];
     dm_other?: MemberLite;
+    lastMsg?: { text: string; created_at: string; user_id: string | null };
   }> = [];
 
   for (const c of allRaw) {
@@ -104,6 +113,7 @@ export default async function ChatPage() {
       is_dm: isDm,
       members,
       dm_other,
+      lastMsg: lastMsgMap.get(c.id),
     });
   }
 

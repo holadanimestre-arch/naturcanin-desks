@@ -15,6 +15,7 @@ type Channel = {
   is_dm: boolean;
   members: MemberLite[];
   dm_other?: MemberLite;
+  lastMsg?: { text: string; created_at: string; user_id: string | null };
 };
 
 type TeamPick = { id: string; name: string; department: string | null };
@@ -87,6 +88,16 @@ export function ChatClient({
   const [authorCache, setAuthorCache] = useState<Record<string, string>>({ [me.id]: me.name });
   const bottomRef = useRef<HTMLDivElement>(null);
 
+  // Último mensaje por canal (para preview en sidebar) y no-leídos
+  const [lastMsgs, setLastMsgs] = useState<Record<number, { text: string; user_id: string | null }>>(() => {
+    const init: Record<number, { text: string; user_id: string | null }> = {};
+    for (const c of channels) {
+      if (c.lastMsg) init[c.id] = { text: c.lastMsg.text, user_id: c.lastMsg.user_id };
+    }
+    return init;
+  });
+  const [unread, setUnread] = useState<Set<number>>(new Set());
+
   const [plusMenuOpen, setPlusMenuOpen] = useState(false);
   const plusRef = useRef<HTMLDivElement>(null);
 
@@ -106,6 +117,17 @@ export function ChatClient({
   const dms = channelList.filter((c) => c.is_dm);
   const rooms = channelList.filter((c) => !c.is_dm);
 
+  // Al abrir un canal, marcar como leído
+  useEffect(() => {
+    if (activeId != null) {
+      setUnread((prev) => {
+        const next = new Set(prev);
+        next.delete(activeId);
+        return next;
+      });
+    }
+  }, [activeId]);
+
   useEffect(() => {
     function onDown(e: MouseEvent) {
       if (!plusRef.current?.contains(e.target as Node)) setPlusMenuOpen(false);
@@ -113,6 +135,33 @@ export function ChatClient({
     window.addEventListener("mousedown", onDown);
     return () => window.removeEventListener("mousedown", onDown);
   }, []);
+
+  // Suscripción global: detecta mensajes nuevos en todos mis canales
+  useEffect(() => {
+    const myChannelIds = channelList.map((c) => c.id);
+    if (myChannelIds.length === 0) return;
+
+    const sub = supabase
+      .channel("unread-tracker")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "chat_messages" },
+        (payload) => {
+          const m = payload.new as Message;
+          if (!myChannelIds.includes(m.channel_id)) return;
+          // Actualizar preview del sidebar
+          setLastMsgs((prev) => ({ ...prev, [m.channel_id]: { text: m.text, user_id: m.user_id } }));
+          // Marcar como no leído si no es el canal activo
+          if (m.channel_id !== activeId) {
+            setUnread((prev) => new Set([...prev, m.channel_id]));
+          }
+        }
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(sub); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [channelList.length]);
 
   async function fillAuthors(userIds: string[]) {
     const missing = userIds.filter((id) => id && !authorCache[id]);
@@ -450,27 +499,33 @@ export function ChatClient({
               {rooms.length > 0 && (
                 <SectionLabel>Canales</SectionLabel>
               )}
-              {rooms.map((c) => (
-                <ChannelRow
-                  key={c.id}
-                  active={c.id === activeId}
-                  onClick={() => setActiveId(c.id)}
-                  avatar={<ChannelTile />}
-                  title={`# ${c.name}`}
-                  subtitle={c.description || `${c.members.length} miembro${c.members.length !== 1 ? "s" : ""}`}
-                />
-              ))}
-              {dms.length > 0 && <SectionLabel>Mensajes directos</SectionLabel>}
-              {dms.map((c) => {
-                const other = c.dm_other;
+              {rooms.map((c) => {
+                const lm = lastMsgs[c.id];
                 return (
                   <ChannelRow
                     key={c.id}
                     active={c.id === activeId}
+                    unread={unread.has(c.id)}
+                    onClick={() => setActiveId(c.id)}
+                    avatar={<ChannelTile />}
+                    title={`# ${c.name}`}
+                    subtitle={lm ? lm.text : (c.description || `${c.members.length} miembro${c.members.length !== 1 ? "s" : ""}`)}
+                  />
+                );
+              })}
+              {dms.length > 0 && <SectionLabel>Mensajes directos</SectionLabel>}
+              {dms.map((c) => {
+                const other = c.dm_other;
+                const lm = lastMsgs[c.id];
+                return (
+                  <ChannelRow
+                    key={c.id}
+                    active={c.id === activeId}
+                    unread={unread.has(c.id)}
                     onClick={() => setActiveId(c.id)}
                     avatar={other ? <Avatar id={other.id} name={other.name} /> : <ChannelTile />}
                     title={other?.name ?? "Conversación"}
-                    subtitle="Mensaje directo"
+                    subtitle={lm ? lm.text : "Mensaje directo"}
                   />
                 );
               })}
@@ -863,12 +918,14 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 
 function ChannelRow({
   active,
+  unread,
   onClick,
   avatar,
   title,
   subtitle,
 }: {
   active: boolean;
+  unread: boolean;
   onClick: () => void;
   avatar: React.ReactNode;
   title: string;
@@ -888,18 +945,29 @@ function ChannelRow({
     >
       {avatar}
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div
-          style={{
-            fontSize: 12.5, fontWeight: 600, color: "var(--nc-ink)",
-            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-          }}
-        >
-          {title}
+        <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+          <div
+            style={{
+              flex: 1, minWidth: 0,
+              fontSize: 12.5, fontWeight: unread ? 700 : 600,
+              color: "var(--nc-ink)",
+              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+            }}
+          >
+            {title}
+          </div>
+          {unread && (
+            <div style={{
+              width: 8, height: 8, borderRadius: "50%",
+              background: "var(--nc-green)", flexShrink: 0,
+            }} />
+          )}
         </div>
         <div
           style={{
             fontSize: 11,
-            color: "var(--nc-mute)",
+            color: unread ? "var(--nc-ink)" : "var(--nc-mute)",
+            fontWeight: unread ? 500 : 400,
             overflow: "hidden",
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
