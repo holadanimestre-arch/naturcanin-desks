@@ -6,7 +6,10 @@ import { FileUpload } from "@/components/file-upload";
 import { CommentBox } from "@/components/comment-box";
 import { DeleteTaskBtn } from "@/components/delete-task-btn";
 import { ICheck, IChev, IClip, IEye, ILock, ISend } from "@/components/icons";
-import { getTask, getTaskComments, getTaskFiles, getSignedUrl } from "@/lib/supabase/queries";
+import {
+  getTask, getTaskComments, getTaskFiles, getSignedUrl, getTaskActivity,
+  type ActivityEntry,
+} from "@/lib/supabase/queries";
 
 type SubtaskRow = { d: boolean; t: string };
 const subtasks: SubtaskRow[] = [
@@ -34,10 +37,11 @@ export default async function TaskDetailPage({
 }) {
   const { id } = await params;
   const taskId = Number(id);
-  const [t, comments, files] = await Promise.all([
+  const [t, comments, files, activity] = await Promise.all([
     getTask(taskId),
     getTaskComments(taskId),
     getTaskFiles(taskId),
+    getTaskActivity(taskId),
   ]);
   if (!t) return notFound();
 
@@ -225,6 +229,25 @@ export default async function TaskDetailPage({
             <Row l="Prioridad" v={<Priority level={t.prio} showLabel />} />
             <Row l="Categoría" v={<Tag k={t.tag} />} />
             <Row l="Estado" v={<State s={t.state} />} />
+
+            <div
+              style={{
+                fontSize: 10, color: "var(--nc-mute)",
+                textTransform: "uppercase", letterSpacing: "0.05em",
+                margin: "16px 0 8px",
+              }}
+            >
+              Actividad · {activity.length}
+            </div>
+            {activity.length === 0 ? (
+              <div style={{ fontSize: 11, color: "var(--nc-mute)" }}>Sin registros aún.</div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {activity.map((a) => (
+                  <ActivityItem key={a.id} a={a} />
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -239,6 +262,66 @@ function Row({ l, v }: { l: string; v: React.ReactNode }) {
         {l}
       </div>
       <div>{v}</div>
+    </div>
+  );
+}
+
+const STATE_LABEL: Record<string, string> = {
+  pending: "Pendiente",
+  progress: "En curso",
+  done: "Completada",
+};
+
+function ActivityItem({ a }: { a: ActivityEntry }) {
+  const who = a.profiles?.name ?? "Sistema";
+  const color: Record<string, string> = {
+    created: "var(--nc-green)",
+    state_changed: "var(--nc-yellow)",
+    assigned: "var(--nc-green)",
+    unassigned: "var(--nc-mute)",
+    comment_added: "var(--tag-logistica)",
+    file_uploaded: "var(--tag-calidad)",
+  };
+  const dot = color[a.kind] ?? "var(--nc-mute)";
+
+  let text: React.ReactNode;
+  switch (a.kind) {
+    case "created":
+      text = <><b style={{ fontWeight: 600 }}>{who}</b> creó la tarea</>;
+      break;
+    case "state_changed": {
+      const to = STATE_LABEL[a.meta?.to] ?? a.meta?.to;
+      text = <><b style={{ fontWeight: 600 }}>{who}</b> cambió a <b style={{ fontWeight: 600 }}>{to}</b></>;
+      break;
+    }
+    case "assigned":
+      text = <><b style={{ fontWeight: 600 }}>{who}</b> asignó a <b style={{ fontWeight: 600 }}>{a.meta?.assignee_name ?? "alguien"}</b></>;
+      break;
+    case "unassigned":
+      text = <><b style={{ fontWeight: 600 }}>{who}</b> quitó a <b style={{ fontWeight: 600 }}>{a.meta?.assignee_name ?? "alguien"}</b></>;
+      break;
+    case "comment_added":
+      text = <><b style={{ fontWeight: 600 }}>{who}</b> comentó <span style={{ color: "var(--nc-mute)" }}>«{a.meta?.preview}»</span></>;
+      break;
+    case "file_uploaded":
+      text = <><b style={{ fontWeight: 600 }}>{who}</b> subió <b style={{ fontWeight: 600 }}>{a.meta?.name}</b></>;
+      break;
+    default:
+      text = <>{who} · {a.kind}</>;
+  }
+
+  return (
+    <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+      <span
+        style={{
+          width: 6, height: 6, borderRadius: "50%",
+          background: dot, marginTop: 5, flexShrink: 0,
+        }}
+      />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 11, color: "var(--nc-text)", lineHeight: 1.4 }}>{text}</div>
+        <div style={{ fontSize: 10, color: "var(--nc-mute)", marginTop: 1 }}>{timeAgo(a.created_at)}</div>
+      </div>
     </div>
   );
 }

@@ -68,6 +68,60 @@ export async function getTaskComments(taskId: number) {
   return data ?? [];
 }
 
+export async function getMyTasks(): Promise<Task[]> {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return [];
+
+  const { data: assignments } = await supabase
+    .from("task_assignees")
+    .select("task_id")
+    .eq("user_id", user.id);
+
+  const taskIds = assignments?.map((a) => a.task_id) ?? [];
+  if (taskIds.length === 0) return [];
+
+  const { data } = await supabase
+    .from("tasks")
+    .select(SELECT_TASK)
+    .in("id", taskIds)
+    .order("due_date", { ascending: true, nullsFirst: false });
+
+  return data?.map(mapRow) ?? [];
+}
+
+export type CalendarTask = {
+  id: number;
+  title: string;
+  day: number;
+  priority: "low" | "med" | "high";
+  tag: string;
+};
+
+export async function getCalendarTasks(year: number, month: number): Promise<CalendarTask[]> {
+  const supabase = await createClient();
+  const mm = String(month).padStart(2, "0");
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const dd = String(daysInMonth).padStart(2, "0");
+  const start = `${year}-${mm}-01`;
+  const end = `${year}-${mm}-${dd}`;
+
+  const { data } = await supabase
+    .from("tasks")
+    .select("id, title, priority, tag, due_date")
+    .gte("due_date", start)
+    .lte("due_date", end)
+    .order("due_date", { ascending: true });
+
+  return (data ?? []).map((t: any) => ({
+    id: Number(t.id),
+    title: t.title,
+    day: Number(t.due_date.split("-")[2]),
+    priority: t.priority,
+    tag: t.tag,
+  }));
+}
+
 export async function getTaskFiles(taskId: number) {
   const supabase = await createClient();
   const { data } = await supabase
@@ -84,6 +138,93 @@ export async function getSignedUrl(storagePath: string): Promise<string | null> 
     .from("task-files")
     .createSignedUrl(storagePath, 3600); // 1 hora
   return data?.signedUrl ?? null;
+}
+
+export type ArchivedTask = {
+  id: number;
+  title: string;
+  tag: string;
+  createdAt: string;
+  completedAt: string | null;
+  completedByName: string | null;
+  completedByUserId: string | null;
+  assignees: { id: string; name: string }[];
+  files: { id: number; name: string; storagePath: string }[];
+};
+
+export async function getArchivedTasks(): Promise<ArchivedTask[]> {
+  const supabase = await createClient();
+
+  const { data: tasks } = await supabase
+    .from("tasks")
+    .select(`
+      id, title, tag, created_at,
+      task_assignees(user_id, profiles(name)),
+      files(id, name, storage_path)
+    `)
+    .eq("state", "done")
+    .order("created_at", { ascending: false });
+
+  if (!tasks) return [];
+
+  const ids = tasks.map((t: any) => t.id);
+  const completionMap = new Map<number, any>();
+  if (ids.length > 0) {
+    const { data: activity } = await supabase
+      .from("task_activity")
+      .select("task_id, created_at, user_id, meta, profiles(name)")
+      .in("task_id", ids)
+      .eq("kind", "state_changed")
+      .order("created_at", { ascending: false });
+
+    for (const a of (activity ?? []) as any[]) {
+      if (a?.meta?.to === "done" && !completionMap.has(a.task_id)) {
+        completionMap.set(a.task_id, a);
+      }
+    }
+  }
+
+  return (tasks as any[]).map((t) => {
+    const comp = completionMap.get(t.id);
+    return {
+      id: Number(t.id),
+      title: t.title,
+      tag: t.tag,
+      createdAt: t.created_at,
+      completedAt: comp?.created_at ?? null,
+      completedByName: comp?.profiles?.name ?? null,
+      completedByUserId: comp?.user_id ?? null,
+      assignees: (t.task_assignees ?? []).map((a: any) => ({
+        id: a.user_id,
+        name: a.profiles?.name ?? "?",
+      })),
+      files: (t.files ?? []).map((f: any) => ({
+        id: Number(f.id),
+        name: f.name,
+        storagePath: f.storage_path,
+      })),
+    };
+  });
+}
+
+export type ActivityEntry = {
+  id: number;
+  kind: string;
+  meta: any;
+  created_at: string;
+  user_id: string | null;
+  profiles: { name: string } | null;
+};
+
+export async function getTaskActivity(taskId: number): Promise<ActivityEntry[]> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("task_activity")
+    .select("id, kind, meta, created_at, user_id, profiles(name)")
+    .eq("task_id", taskId)
+    .order("created_at", { ascending: false })
+    .limit(50);
+  return (data ?? []) as any;
 }
 
 export async function getMyNotifications() {

@@ -1,5 +1,5 @@
 import { peopleById, tags } from "@/lib/data";
-import type { PersonId, TagKey, Priority as Prio, TaskState } from "@/lib/data";
+import type { Person, TagKey, Priority as Prio, TaskState } from "@/lib/data";
 import { IClock } from "./icons";
 
 type Size = "sm" | "lg" | "xl" | undefined;
