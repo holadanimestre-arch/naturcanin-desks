@@ -15,6 +15,10 @@ function formatDue(date: string | null): string {
 }
 
 function mapRow(t: any): Task {
+  const subRows: { id: number; done: boolean }[] = t.subtasks ?? [];
+  const subs = subRows.length > 0
+    ? { d: subRows.filter((s) => s.done).length, t: subRows.length }
+    : undefined;
   return {
     id: Number(t.id),
     title: t.title,
@@ -23,10 +27,12 @@ function mapRow(t: any): Task {
     prio: (t.priority as Priority) || "med",
     state: (t.state as TaskState) || "pending",
     due: formatDue(t.due_date),
+    dueDate: t.due_date ?? null,
     assignee: (t.task_assignees ?? []).map((a: any) => a.user_id),
     assigneeNames: (t.task_assignees ?? []).map((a: any) => a.profiles?.name ?? "?"),
     comments: t.comments?.[0]?.count ?? 0,
     files: t.files?.[0]?.count ?? 0,
+    subs,
   };
 }
 
@@ -34,7 +40,8 @@ const SELECT_TASK = `
   id, title, description, state, priority, tag, due_date, created_at,
   task_assignees(user_id, profiles(name)),
   comments(count),
-  files(count)
+  files(count),
+  subtasks(id, done)
 `;
 
 export async function getTasks(): Promise<Task[]> {
@@ -120,6 +127,24 @@ export async function getCalendarTasks(year: number, month: number): Promise<Cal
     priority: t.priority,
     tag: t.tag,
   }));
+}
+
+export type SubtaskRow = {
+  id: number;
+  text: string;
+  done: boolean;
+  position: number;
+};
+
+export async function getTaskSubtasks(taskId: number): Promise<SubtaskRow[]> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("subtasks")
+    .select("id, text, done, position")
+    .eq("task_id", taskId)
+    .order("position", { ascending: true })
+    .order("id", { ascending: true });
+  return (data ?? []) as SubtaskRow[];
 }
 
 export async function getTaskFiles(taskId: number) {

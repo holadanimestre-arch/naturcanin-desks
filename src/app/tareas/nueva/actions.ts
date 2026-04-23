@@ -1,11 +1,13 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { logError } from "@/lib/logger";
 
-export async function createTask(formData: FormData) {
+type CreateResult = { id: number } | { error: string };
+
+export async function createTask(formData: FormData): Promise<CreateResult> {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "No autenticado" };
@@ -16,6 +18,11 @@ export async function createTask(formData: FormData) {
   const assigneeIds = formData
     .getAll("assignee_ids")
     .map((v) => String(v))
+    .filter(Boolean);
+
+  const subtaskTexts = formData
+    .getAll("subtasks[]")
+    .map((v) => String(v).trim())
     .filter(Boolean);
 
   const { data: task, error } = await supabase
@@ -32,20 +39,31 @@ export async function createTask(formData: FormData) {
     .select("id")
     .single();
 
-  if (error || !task) return { error: error?.message ?? "Error al crear" };
+  if (error || !task) {
+    await logError("Error al crear tarea", { context: { message: error?.message }, path: "/tareas/nueva", userId: user.id });
+    return { error: error?.message ?? "Error al crear" };
+  }
 
-  // Asigna al creador siempre que no esté ya incluido
   const finalAssignees = Array.from(new Set([user.id, ...assigneeIds]));
 
-  // Usa admin client para insertar asignaciones de otros usuarios
-  // (si el creador no es admin, RLS bloquearía insertar asignaciones ajenas).
   const admin = createAdminClient();
   await admin.from("task_assignees").insert(
     finalAssignees.map((uid) => ({ task_id: task.id, user_id: uid }))
   );
 
+  if (subtaskTexts.length > 0) {
+    await admin.from("subtasks").insert(
+      subtaskTexts.map((text, i) => ({
+        task_id: task.id,
+        text,
+        position: i,
+        created_by: user.id,
+      }))
+    );
+  }
+
   revalidatePath("/tablero");
   revalidatePath("/");
   revalidatePath("/mis-tareas");
-  redirect("/tablero");
+  return { id: Number(task.id) };
 }

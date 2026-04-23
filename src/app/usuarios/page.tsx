@@ -151,6 +151,7 @@ export default async function UsersPage() {
                 <UserRowActions
                   userId={u.id}
                   userName={u.name}
+                  userEmail={u.email}
                   currentRole={u.role}
                   isSelf={u.id === user.id}
                 />

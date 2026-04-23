@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { logError } from "@/lib/logger";
 
 async function requireAdmin() {
   const supabase = await createClient();
@@ -36,7 +37,72 @@ export async function inviteUser(formData: FormData) {
     data: { name, role, department },
   });
 
-  if (error) return { error: error.message };
+  if (error) {
+    await logError("Error al invitar usuario", { context: { message: error.message, email }, path: "/usuarios" });
+    return { error: error.message };
+  }
+  revalidatePath("/usuarios");
+  return { success: true };
+}
+
+export async function createUserWithPassword(formData: FormData) {
+  const check = await requireAdmin();
+  if ("error" in check) return { error: check.error };
+
+  const email = (formData.get("email") as string)?.trim().toLowerCase();
+  const name = (formData.get("name") as string)?.trim();
+  const password = (formData.get("password") as string) ?? "";
+  const role = (formData.get("role") as string) || "usuario";
+  const department = (formData.get("department") as string) || "";
+
+  if (!email || !name) return { error: "Nombre y correo obligatorios" };
+  if (password.length < 8) return { error: "La contraseña debe tener al menos 8 caracteres" };
+  if (role !== "admin" && role !== "usuario") return { error: "Rol inválido" };
+
+  const admin = createAdminClient();
+  const { data, error } = await admin.auth.admin.createUser({
+    email,
+    password,
+    email_confirm: true,
+    user_metadata: { name, role, department },
+  });
+  if (error || !data?.user) {
+    await logError("Error al crear usuario con contraseña", { context: { message: error?.message, email }, path: "/usuarios" });
+    return { error: error?.message ?? "Error al crear usuario" };
+  }
+
+  // Asegura el perfil con nombre y rol (por si el trigger no rellena todo).
+  await admin.from("profiles").upsert({ id: data.user.id, name, role });
+
+  revalidatePath("/usuarios");
+  return { success: true as const, userId: data.user.id };
+}
+
+export async function updateUserProfile(
+  userId: string,
+  fields: { name?: string; email?: string; password?: string }
+) {
+  const check = await requireAdmin();
+  if ("error" in check) return { error: check.error };
+
+  const admin = createAdminClient();
+  const authUpdate: { email?: string; password?: string } = {};
+  if (fields.email) authUpdate.email = fields.email.trim().toLowerCase();
+  if (fields.password) authUpdate.password = fields.password;
+
+  if (Object.keys(authUpdate).length > 0) {
+    const { error } = await admin.auth.admin.updateUserById(userId, authUpdate);
+    if (error) return { error: error.message };
+  }
+
+  if (fields.name) {
+    const { error } = await admin
+      .from("profiles")
+      .update({ name: fields.name.trim() })
+      .eq("id", userId);
+    if (error) return { error: error.message };
+  }
+
   revalidatePath("/usuarios");
   return { success: true };
 }

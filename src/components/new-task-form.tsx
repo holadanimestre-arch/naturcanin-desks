@@ -4,8 +4,10 @@ import Link from "next/link";
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Avatar, Priority, Tag } from "./primitives";
-import { ICal, ICheck, IClip, IPlus, IX } from "./icons";
+import { ICheck, IClip, IPlus, IX } from "./icons";
 import { createTask } from "@/app/tareas/nueva/actions";
+import { recordFile } from "@/app/tareas/[id]/actions";
+import { createClient } from "@/lib/supabase/client";
 import type { TagKey } from "@/lib/data";
 
 type TeamPick = { id: string; name: string; department: string | null };
@@ -24,7 +26,12 @@ export function NewTaskForm({
   const [assignees, setAssignees] = useState<string[]>([me.id]);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [files, setFiles] = useState<File[]>([]);
+  const [subtasks, setSubtasks] = useState<string[]>([]);
+  const [subtaskDraft, setSubtaskDraft] = useState("");
+  const [uploadNote, setUploadNote] = useState<string | null>(null);
   const pickerRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const teamById = new Map(team.map((p) => [p.id, p]));
   const selected = assignees
@@ -35,20 +42,74 @@ export function NewTaskForm({
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setLoading(true);
+    setUploadNote(null);
     const fd = new FormData(e.currentTarget);
     fd.set("priority", prio);
     fd.set("tag", tag);
-    // Borrar y volver a insertar los assignee_ids (excluimos al creador, que se añade server-side)
     fd.delete("assignee_ids");
     for (const uid of assignees) if (uid !== me.id) fd.append("assignee_ids", uid);
+    fd.delete("subtasks[]");
+    for (const s of subtasks) fd.append("subtasks[]", s);
+    // El <input type="file"> está fuera del form, así que no incluimos nada aquí.
+    fd.delete("attachments");
+
     const res = await createTask(fd);
-    if ((res as any)?.error) {
-      alert("Error: " + (res as any).error);
+    if ("error" in res) {
+      alert("Error: " + res.error);
       setLoading(false);
       return;
     }
-    router.push("/tablero");
+
+    if (files.length > 0) {
+      const supabase = createClient();
+      let failed = 0;
+      for (const f of files) {
+        const path = `${res.id}/${Date.now()}-${f.name}`;
+        const up = await supabase.storage.from("task-files").upload(path, f);
+        if (up.error) {
+          failed++;
+          continue;
+        }
+        const rec = await recordFile(res.id, f.name, path);
+        if (rec?.error) failed++;
+      }
+      if (failed > 0) {
+        setUploadNote(`La tarea se creó, pero ${failed} archivo${failed !== 1 ? "s" : ""} no se pudo subir.`);
+        setLoading(false);
+        return;
+      }
+    }
+
+    router.push(`/tareas/${res.id}`);
     router.refresh();
+  }
+
+  function addSubtask() {
+    const t = subtaskDraft.trim();
+    if (!t) return;
+    setSubtasks((prev) => [...prev, t]);
+    setSubtaskDraft("");
+  }
+
+  function removeSubtask(i: number) {
+    setSubtasks((prev) => prev.filter((_, idx) => idx !== i));
+  }
+
+  function onFilesPicked(e: React.ChangeEvent<HTMLInputElement>) {
+    const picked = Array.from(e.target.files ?? []);
+    if (picked.length === 0) return;
+    setFiles((prev) => [...prev, ...picked]);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  function removeFile(i: number) {
+    setFiles((prev) => prev.filter((_, idx) => idx !== i));
+  }
+
+  function fmtSize(bytes: number): string {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   }
 
   function toggle(uid: string) {
@@ -63,14 +124,14 @@ export function NewTaskForm({
   const tags: TagKey[] = ["produccion", "logistica", "ventas", "calidad", "admin"];
 
   return (
-    <div className="nc-app-shell" style={{ position: "relative" }}>
-      <div style={{ position: "absolute", inset: 0, background: "rgba(28,31,26,0.35)", zIndex: 10 }} />
+    <>
+      <div style={{ position: "fixed", inset: 0, background: "rgba(28,31,26,0.35)", zIndex: 40 }} />
 
       <div
         style={{
-          position: "absolute", inset: 0,
+          position: "fixed", inset: 0,
           display: "flex", alignItems: "center", justifyContent: "center",
-          padding: 24, zIndex: 11,
+          padding: 24, zIndex: 41,
         }}
       >
         <div
@@ -273,14 +334,138 @@ export function NewTaskForm({
               </div>
             </div>
 
-            <div style={{ display: "flex", gap: 6, padding: "4px 0 0" }}>
-              <button type="button" className="nc-btn ghost" style={{ fontSize: 11.5 }} disabled>
-                <IClip size={12} /> Adjuntar (próximamente)
-              </button>
-              <button type="button" className="nc-btn ghost" style={{ fontSize: 11.5 }} disabled>
-                <ICheck size={12} /> Subtareas (próximamente)
-              </button>
+            {/* Subtareas */}
+            <div style={{ padding: "4px 0 0" }}>
+              <div style={{ fontSize: 11.5, color: "var(--nc-mute)", marginBottom: 6, display: "flex", alignItems: "center", gap: 6 }}>
+                <ICheck size={12} /> Subtareas
+                {subtasks.length > 0 && (
+                  <span style={{ fontSize: 10.5, color: "var(--nc-mute)" }}>· {subtasks.length}</span>
+                )}
+              </div>
+              {subtasks.length > 0 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 6 }}>
+                  {subtasks.map((s, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        display: "flex", alignItems: "center", gap: 8,
+                        padding: "5px 8px",
+                        background: "var(--nc-line-2)",
+                        borderRadius: 4,
+                        fontSize: 12,
+                      }}
+                    >
+                      <span
+                        style={{
+                          width: 12, height: 12, borderRadius: 3,
+                          border: "1.5px solid var(--nc-line)",
+                          flexShrink: 0,
+                        }}
+                      />
+                      <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {s}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => removeSubtask(i)}
+                        className="nc-icon-btn"
+                        style={{ width: 18, height: 18 }}
+                        aria-label={`Quitar subtarea ${i + 1}`}
+                      >
+                        <IX size={10} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div style={{ display: "flex", gap: 6 }}>
+                <input
+                  type="text"
+                  value={subtaskDraft}
+                  onChange={(e) => setSubtaskDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      addSubtask();
+                    }
+                  }}
+                  placeholder="Añadir subtarea y pulsa Enter"
+                  className="nc-input"
+                  style={{ flex: 1, fontSize: 12 }}
+                />
+                <button
+                  type="button"
+                  onClick={addSubtask}
+                  className="nc-btn secondary"
+                  style={{ fontSize: 11.5, padding: "5px 10px" }}
+                  disabled={!subtaskDraft.trim()}
+                >
+                  <IPlus size={11} /> Añadir
+                </button>
+              </div>
             </div>
+
+            {/* Adjuntos */}
+            <div style={{ padding: "12px 0 0" }}>
+              <div style={{ fontSize: 11.5, color: "var(--nc-mute)", marginBottom: 6, display: "flex", alignItems: "center", gap: 6 }}>
+                <IClip size={12} /> Archivos adjuntos
+                {files.length > 0 && (
+                  <span style={{ fontSize: 10.5, color: "var(--nc-mute)" }}>· {files.length}</span>
+                )}
+              </div>
+              {files.length > 0 && (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 6 }}>
+                  {files.map((f, i) => (
+                    <div
+                      key={`${f.name}-${i}`}
+                      style={{
+                        display: "inline-flex", alignItems: "center", gap: 6,
+                        padding: "4px 6px 4px 8px",
+                        background: "var(--nc-line-2)",
+                        borderRadius: 999,
+                        fontSize: 11,
+                        maxWidth: 220,
+                      }}
+                    >
+                      <IClip size={10} />
+                      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {f.name}
+                      </span>
+                      <span style={{ color: "var(--nc-mute)", fontSize: 10 }}>{fmtSize(f.size)}</span>
+                      <button
+                        type="button"
+                        onClick={() => removeFile(i)}
+                        className="nc-icon-btn"
+                        style={{ width: 16, height: 16 }}
+                        aria-label={`Quitar ${f.name}`}
+                      >
+                        <IX size={9} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <label
+                className="nc-btn secondary"
+                style={{ fontSize: 11.5, padding: "5px 10px", cursor: "pointer", display: "inline-flex" }}
+              >
+                <IClip size={11} /> Seleccionar archivos
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  style={{ display: "none" }}
+                  onChange={onFilesPicked}
+                  accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.txt,.doc,.docx,.xlsx,.csv"
+                />
+              </label>
+            </div>
+
+            {uploadNote && (
+              <div style={{ fontSize: 11, color: "var(--nc-danger)", marginTop: 8 }}>
+                {uploadNote}
+              </div>
+            )}
 
             <div
               style={{
@@ -304,6 +489,6 @@ export function NewTaskForm({
           </form>
         </div>
       </div>
-    </div>
+    </>
   );
 }

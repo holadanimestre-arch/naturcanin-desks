@@ -1,18 +1,30 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Avatar } from "./primitives";
-import { IMore, IPlus, ISearch, ISend } from "./icons";
+import { IMore, IPlus, ISearch, ISend, IX, ICheck } from "./icons";
 import { createClient } from "@/lib/supabase/client";
 
-type Channel = { id: number; name: string; description: string | null };
+type MemberLite = { id: string; name: string };
+
+type Channel = {
+  id: number;
+  name: string;
+  description: string | null;
+  is_dm: boolean;
+  members: MemberLite[];
+  dm_other?: MemberLite;
+};
+
+type TeamPick = { id: string; name: string; department: string | null };
+
 type Message = {
   id: number;
   channel_id: number;
   user_id: string | null;
   text: string;
   created_at: string;
-  author_name?: string;
 };
 
 function formatTime(ts: string) {
@@ -22,9 +34,7 @@ function formatTime(ts: string) {
     d.getFullYear() === now.getFullYear() &&
     d.getMonth() === now.getMonth() &&
     d.getDate() === now.getDate();
-  if (sameDay) {
-    return d.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
-  }
+  if (sameDay) return d.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
   const yesterday = new Date(now);
   yesterday.setDate(yesterday.getDate() - 1);
   const sameAsYesterday =
@@ -54,14 +64,22 @@ function ChannelTile({ size = 32 }: { size?: number }) {
   );
 }
 
+function dmKey(a: string, b: string): string {
+  return [a, b].sort().join(":");
+}
+
 export function ChatClient({
   me,
   channels,
+  team,
 }: {
   me: { id: string; name: string };
   channels: Channel[];
+  team: TeamPick[];
 }) {
+  const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
+  const [channelList, setChannelList] = useState<Channel[]>(channels);
   const [activeId, setActiveId] = useState<number | null>(channels[0]?.id ?? null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [text, setText] = useState("");
@@ -69,16 +87,37 @@ export function ChatClient({
   const [authorCache, setAuthorCache] = useState<Record<string, string>>({ [me.id]: me.name });
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  const active = channels.find((c) => c.id === activeId) ?? null;
+  const [plusMenuOpen, setPlusMenuOpen] = useState(false);
+  const plusRef = useRef<HTMLDivElement>(null);
 
-  // Resolve author names for user_ids we don't know yet
+  const [dmModalOpen, setDmModalOpen] = useState(false);
+  const [dmBusy, setDmBusy] = useState(false);
+  const [dmError, setDmError] = useState<string | null>(null);
+  const [dmQuery, setDmQuery] = useState("");
+
+  const [channelModalOpen, setChannelModalOpen] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newDesc, setNewDesc] = useState("");
+  const [newMembers, setNewMembers] = useState<string[]>([]);
+  const [channelBusy, setChannelBusy] = useState(false);
+  const [channelError, setChannelError] = useState<string | null>(null);
+
+  const active = channelList.find((c) => c.id === activeId) ?? null;
+  const dms = channelList.filter((c) => c.is_dm);
+  const rooms = channelList.filter((c) => !c.is_dm);
+
+  useEffect(() => {
+    function onDown(e: MouseEvent) {
+      if (!plusRef.current?.contains(e.target as Node)) setPlusMenuOpen(false);
+    }
+    window.addEventListener("mousedown", onDown);
+    return () => window.removeEventListener("mousedown", onDown);
+  }, []);
+
   async function fillAuthors(userIds: string[]) {
     const missing = userIds.filter((id) => id && !authorCache[id]);
     if (missing.length === 0) return;
-    const { data } = await supabase
-      .from("profiles")
-      .select("id, name")
-      .in("id", missing);
+    const { data } = await supabase.from("profiles").select("id, name").in("id", missing);
     if (data) {
       setAuthorCache((prev) => {
         const next = { ...prev };
@@ -88,7 +127,6 @@ export function ChatClient({
     }
   }
 
-  // Load messages when active channel changes + subscribe to realtime
   useEffect(() => {
     if (activeId == null) return;
     let ignore = false;
@@ -126,7 +164,6 @@ export function ChatClient({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeId]);
 
-  // Auto-scroll to bottom when messages change
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.length]);
@@ -145,6 +182,161 @@ export function ChatClient({
     }
     setText("");
   }
+
+  async function openOrCreateDm(other: TeamPick) {
+    if (dmBusy) return;
+    setDmBusy(true);
+    setDmError(null);
+
+    const key = dmKey(me.id, other.id);
+
+    // ¿Ya existe?
+    const existing = channelList.find((c) => c.is_dm && c.members.some((m) => m.id === other.id));
+    if (existing) {
+      setActiveId(existing.id);
+      setDmModalOpen(false);
+      setDmBusy(false);
+      return;
+    }
+
+    const { data: found } = await supabase
+      .from("chat_channels")
+      .select("id, name, description, is_dm, dm_key")
+      .eq("dm_key", key)
+      .maybeSingle();
+
+    if (found) {
+      // Me aseguro de ser miembro
+      await supabase
+        .from("chat_channel_members")
+        .insert([
+          { channel_id: found.id, user_id: me.id },
+          { channel_id: found.id, user_id: other.id },
+        ])
+        .select();
+      const asChannel: Channel = {
+        id: found.id,
+        name: found.name,
+        description: found.description,
+        is_dm: true,
+        members: [
+          { id: me.id, name: me.name },
+          { id: other.id, name: other.name },
+        ],
+        dm_other: { id: other.id, name: other.name },
+      };
+      setChannelList((prev) => (prev.some((c) => c.id === asChannel.id) ? prev : [...prev, asChannel]));
+      setActiveId(asChannel.id);
+      setDmModalOpen(false);
+      setDmBusy(false);
+      router.refresh();
+      return;
+    }
+
+    // Crear nuevo DM
+    const displayName = `dm:${key.slice(0, 12)}`;
+    const { data: created, error: createErr } = await supabase
+      .from("chat_channels")
+      .insert({ name: displayName, description: null, is_dm: true, dm_key: key, created_by: me.id })
+      .select("id")
+      .single();
+
+    if (createErr || !created) {
+      setDmError(createErr?.message ?? "No se pudo crear el DM");
+      setDmBusy(false);
+      return;
+    }
+
+    const { error: memErr } = await supabase.from("chat_channel_members").insert([
+      { channel_id: created.id, user_id: me.id },
+      { channel_id: created.id, user_id: other.id },
+    ]);
+
+    if (memErr) {
+      setDmError(memErr.message);
+      setDmBusy(false);
+      return;
+    }
+
+    const asChannel: Channel = {
+      id: created.id,
+      name: displayName,
+      description: null,
+      is_dm: true,
+      members: [
+        { id: me.id, name: me.name },
+        { id: other.id, name: other.name },
+      ],
+      dm_other: { id: other.id, name: other.name },
+    };
+    setChannelList((prev) => [...prev, asChannel]);
+    setActiveId(asChannel.id);
+    setDmModalOpen(false);
+    setDmBusy(false);
+    router.refresh();
+  }
+
+  async function createChannel() {
+    const name = newName.trim().replace(/^#+/, "").trim();
+    if (!name || channelBusy) return;
+    setChannelBusy(true);
+    setChannelError(null);
+
+    const { data: created, error } = await supabase
+      .from("chat_channels")
+      .insert({ name, description: newDesc.trim() || null, is_dm: false, created_by: me.id })
+      .select("id, name, description")
+      .single();
+
+    if (error || !created) {
+      setChannelError(error?.message ?? "No se pudo crear el canal");
+      setChannelBusy(false);
+      return;
+    }
+
+    const memberIds = Array.from(new Set([me.id, ...newMembers]));
+    const { error: memErr } = await supabase
+      .from("chat_channel_members")
+      .insert(memberIds.map((uid) => ({ channel_id: created.id, user_id: uid })));
+
+    if (memErr) {
+      setChannelError(memErr.message);
+      setChannelBusy(false);
+      return;
+    }
+
+    const teamById = new Map(team.map((t) => [t.id, t.name]));
+    const members: MemberLite[] = memberIds.map((id) => ({
+      id,
+      name: id === me.id ? me.name : teamById.get(id) ?? "—",
+    }));
+
+    const asChannel: Channel = {
+      id: created.id,
+      name: created.name,
+      description: created.description,
+      is_dm: false,
+      members,
+    };
+    setChannelList((prev) =>
+      [...prev, asChannel].sort((a, b) => a.name.localeCompare(b.name, "es"))
+    );
+    setActiveId(asChannel.id);
+    setNewName("");
+    setNewDesc("");
+    setNewMembers([]);
+    setChannelModalOpen(false);
+    setChannelBusy(false);
+    router.refresh();
+  }
+
+  const filteredDmCandidates = team
+    .filter((t) => t.id !== me.id)
+    .filter((t) => {
+      const q = dmQuery.trim().toLowerCase();
+      if (!q) return true;
+      return t.name.toLowerCase().includes(q) || (t.department ?? "").toLowerCase().includes(q);
+    });
 
   return (
     <div style={{ flex: 1, display: "flex", minWidth: 0 }}>
@@ -170,9 +362,64 @@ export function ChatClient({
         >
           <div style={{ fontSize: 13, fontWeight: 600 }}>Chat</div>
           <div style={{ flex: 1 }} />
-          <button className="nc-icon-btn" aria-label="Nuevo">
-            <IPlus size={14} />
-          </button>
+          <div ref={plusRef} style={{ position: "relative" }}>
+            <button
+              type="button"
+              className="nc-icon-btn"
+              aria-label="Nueva conversación"
+              aria-haspopup="menu"
+              aria-expanded={plusMenuOpen}
+              onClick={() => setPlusMenuOpen((v) => !v)}
+            >
+              <IPlus size={14} />
+            </button>
+            {plusMenuOpen && (
+              <div
+                role="menu"
+                style={{
+                  position: "absolute",
+                  top: "calc(100% + 6px)",
+                  right: 0,
+                  minWidth: 200,
+                  background: "var(--nc-surface)",
+                  border: "1px solid var(--nc-line)",
+                  borderRadius: "var(--r-md)",
+                  boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
+                  padding: 4,
+                  zIndex: 30,
+                }}
+              >
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setPlusMenuOpen(false);
+                    setDmError(null);
+                    setDmQuery("");
+                    setDmModalOpen(true);
+                  }}
+                  style={menuItemStyle}
+                >
+                  Mensaje directo
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setPlusMenuOpen(false);
+                    setChannelError(null);
+                    setNewName("");
+                    setNewDesc("");
+                    setNewMembers([]);
+                    setChannelModalOpen(true);
+                  }}
+                  style={menuItemStyle}
+                >
+                  Nuevo canal
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
         <div style={{ padding: "8px 10px", borderBottom: "1px solid var(--nc-line-2)" }}>
@@ -194,65 +441,48 @@ export function ChatClient({
         </div>
 
         <div style={{ flex: 1, overflow: "auto" }}>
-          {channels.length === 0 ? (
+          {channelList.length === 0 ? (
             <div style={{ padding: "24px 14px", textAlign: "center", fontSize: 12, color: "var(--nc-mute)" }}>
-              Sin canales
+              Sin conversaciones. Pulsa + para empezar.
             </div>
           ) : (
-            channels.map((c) => {
-              const isActive = c.id === activeId;
-              return (
-                <button
+            <>
+              {rooms.length > 0 && (
+                <SectionLabel>Canales</SectionLabel>
+              )}
+              {rooms.map((c) => (
+                <ChannelRow
                   key={c.id}
+                  active={c.id === activeId}
                   onClick={() => setActiveId(c.id)}
-                  style={{
-                    display: "flex", gap: 10,
-                    padding: "10px 14px",
-                    background: isActive ? "var(--nc-green-soft)" : "transparent",
-                    borderBottom: "1px solid var(--nc-line-2)",
-                    width: "100%", textAlign: "left", alignItems: "flex-start",
-                    cursor: "pointer",
-                  }}
-                >
-                  <ChannelTile />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--nc-ink)" }}>
-                      # {c.name}
-                    </div>
-                    {c.description && (
-                      <div
-                        style={{
-                          fontSize: 11,
-                          color: "var(--nc-mute)",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {c.description}
-                      </div>
-                    )}
-                  </div>
-                </button>
-              );
-            })
+                  avatar={<ChannelTile />}
+                  title={`# ${c.name}`}
+                  subtitle={c.description || `${c.members.length} miembro${c.members.length !== 1 ? "s" : ""}`}
+                />
+              ))}
+              {dms.length > 0 && <SectionLabel>Mensajes directos</SectionLabel>}
+              {dms.map((c) => {
+                const other = c.dm_other;
+                return (
+                  <ChannelRow
+                    key={c.id}
+                    active={c.id === activeId}
+                    onClick={() => setActiveId(c.id)}
+                    avatar={other ? <Avatar id={other.id} name={other.name} /> : <ChannelTile />}
+                    title={other?.name ?? "Conversación"}
+                    subtitle="Mensaje directo"
+                  />
+                );
+              })}
+            </>
           )}
         </div>
       </div>
 
       {/* Conversation pane */}
-      <div
-        style={{
-          flex: 1,
-          display: "flex",
-          flexDirection: "column",
-          minWidth: 0,
-          background: "var(--nc-bg)",
-        }}
-      >
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, background: "var(--nc-bg)" }}>
         {active ? (
           <>
-            {/* Header */}
             <div
               style={{
                 padding: "10px 16px",
@@ -264,11 +494,21 @@ export function ChatClient({
                 flexShrink: 0,
               }}
             >
-              <ChannelTile />
+              {active.is_dm && active.dm_other ? (
+                <Avatar id={active.dm_other.id} name={active.dm_other.name} size="lg" />
+              ) : (
+                <ChannelTile />
+              )}
               <div>
-                <div style={{ fontSize: 13.5, fontWeight: 600 }}># {active.name}</div>
+                <div style={{ fontSize: 13.5, fontWeight: 600 }}>
+                  {active.is_dm
+                    ? active.dm_other?.name ?? "Conversación"
+                    : `# ${active.name}`}
+                </div>
                 <div style={{ fontSize: 10.5, color: "var(--nc-mute)" }}>
-                  {active.description || "Canal"}
+                  {active.is_dm
+                    ? "Mensaje directo"
+                    : active.description || `${active.members.length} miembro${active.members.length !== 1 ? "s" : ""}`}
                 </div>
               </div>
               <div style={{ flex: 1 }} />
@@ -277,7 +517,6 @@ export function ChatClient({
               </button>
             </div>
 
-            {/* Messages */}
             <div
               style={{
                 flex: 1,
@@ -289,15 +528,10 @@ export function ChatClient({
               }}
             >
               {messages.length === 0 ? (
-                <div
-                  style={{
-                    margin: "auto",
-                    textAlign: "center",
-                    fontSize: 12,
-                    color: "var(--nc-mute)",
-                  }}
-                >
-                  No hay mensajes en este canal. Sé el primero en escribir.
+                <div style={{ margin: "auto", textAlign: "center", fontSize: 12, color: "var(--nc-mute)" }}>
+                  {active.is_dm
+                    ? "Sin mensajes todavía. Saluda a esta persona."
+                    : "No hay mensajes en este canal. Sé el primero en escribir."}
                 </div>
               ) : (
                 messages.map((m) => {
@@ -315,7 +549,7 @@ export function ChatClient({
                     >
                       {!mine && m.user_id && <Avatar id={m.user_id} name={name} />}
                       <div style={{ maxWidth: "72%" }}>
-                        {!mine && (
+                        {!mine && !active.is_dm && (
                           <div
                             style={{
                               fontSize: 10.5,
@@ -338,9 +572,7 @@ export function ChatClient({
                             boxShadow: mine ? "none" : "0 1px 2px rgba(28,31,26,0.05)",
                           }}
                         >
-                          <div style={{ fontSize: 12.5, lineHeight: 1.45, whiteSpace: "pre-wrap" }}>
-                            {m.text}
-                          </div>
+                          <div style={{ fontSize: 12.5, lineHeight: 1.45, whiteSpace: "pre-wrap" }}>{m.text}</div>
                           <div
                             style={{
                               fontSize: 9.5,
@@ -360,7 +592,6 @@ export function ChatClient({
               <div ref={bottomRef} />
             </div>
 
-            {/* Composer */}
             <div
               style={{
                 borderTop: "1px solid var(--nc-line)",
@@ -375,7 +606,11 @@ export function ChatClient({
               <textarea
                 value={text}
                 onChange={(e) => setText(e.target.value)}
-                placeholder={`Escribe en #${active.name}…`}
+                placeholder={
+                  active.is_dm
+                    ? `Mensaje para ${active.dm_other?.name ?? ""}…`
+                    : `Escribe en #${active.name}…`
+                }
                 rows={1}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
@@ -412,10 +647,317 @@ export function ChatClient({
           </>
         ) : (
           <div style={{ margin: "auto", fontSize: 12, color: "var(--nc-mute)" }}>
-            Sin canales disponibles
+            Sin conversaciones. Pulsa + para crear una.
           </div>
         )}
       </div>
+
+      {/* Modal: DM */}
+      {dmModalOpen && (
+        <ModalShell onClose={() => !dmBusy && setDmModalOpen(false)} title="Mensaje directo">
+          <div style={{ padding: "12px 16px" }}>
+            <input
+              autoFocus
+              value={dmQuery}
+              onChange={(e) => setDmQuery(e.target.value)}
+              placeholder="Buscar persona…"
+              className="nc-input"
+              style={{ width: "100%", fontSize: 13, padding: "7px 10px", marginBottom: 10 }}
+            />
+            <div style={{ maxHeight: 320, overflow: "auto", margin: "0 -4px" }}>
+              {filteredDmCandidates.length === 0 ? (
+                <div style={{ padding: "18px 10px", fontSize: 12, color: "var(--nc-mute)", textAlign: "center" }}>
+                  Sin coincidencias
+                </div>
+              ) : (
+                filteredDmCandidates.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => openOrCreateDm(p)}
+                    disabled={dmBusy}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 10,
+                      width: "100%", padding: "8px 10px",
+                      background: "transparent", borderRadius: 6,
+                      fontSize: 12.5, textAlign: "left",
+                      cursor: dmBusy ? "wait" : "pointer",
+                    }}
+                  >
+                    <Avatar id={p.id} name={p.name} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 500, color: "var(--nc-ink)" }}>{p.name}</div>
+                      {p.department && (
+                        <div style={{ fontSize: 10.5, color: "var(--nc-mute)" }}>{p.department}</div>
+                      )}
+                    </div>
+                  </button>
+                ))
+              )}
+            </div>
+            {dmError && (
+              <div style={{ fontSize: 11.5, color: "var(--nc-danger)", marginTop: 8 }}>{dmError}</div>
+            )}
+          </div>
+        </ModalShell>
+      )}
+
+      {/* Modal: Nuevo canal */}
+      {channelModalOpen && (
+        <ModalShell onClose={() => !channelBusy && setChannelModalOpen(false)} title="Nuevo canal">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              createChannel();
+            }}
+            style={{ padding: "12px 16px" }}
+          >
+            <label style={{ display: "block", marginBottom: 10 }}>
+              <div style={{ fontSize: 11.5, color: "var(--nc-mute)", marginBottom: 4 }}>Nombre del canal</div>
+              <input
+                autoFocus
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                placeholder="logistica"
+                required
+                className="nc-input"
+                style={{ width: "100%", fontSize: 13, padding: "7px 10px" }}
+              />
+            </label>
+            <label style={{ display: "block", marginBottom: 10 }}>
+              <div style={{ fontSize: 11.5, color: "var(--nc-mute)", marginBottom: 4 }}>Descripción (opcional)</div>
+              <input
+                value={newDesc}
+                onChange={(e) => setNewDesc(e.target.value)}
+                placeholder="Para qué sirve este canal"
+                className="nc-input"
+                style={{ width: "100%", fontSize: 13, padding: "7px 10px" }}
+              />
+            </label>
+            <div style={{ marginBottom: 10 }}>
+              <div style={{ fontSize: 11.5, color: "var(--nc-mute)", marginBottom: 4 }}>
+                Añadir miembros {newMembers.length > 0 && `· ${newMembers.length} seleccionado${newMembers.length !== 1 ? "s" : ""}`}
+              </div>
+              <div
+                style={{
+                  maxHeight: 220, overflow: "auto",
+                  border: "1px solid var(--nc-line)", borderRadius: "var(--r-sm)",
+                  padding: 4,
+                }}
+              >
+                {team.filter((t) => t.id !== me.id).length === 0 ? (
+                  <div style={{ padding: "18px 10px", fontSize: 12, color: "var(--nc-mute)", textAlign: "center" }}>
+                    No hay más miembros para añadir
+                  </div>
+                ) : (
+                  team
+                    .filter((t) => t.id !== me.id)
+                    .map((p) => {
+                      const on = newMembers.includes(p.id);
+                      return (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() =>
+                            setNewMembers((prev) =>
+                              prev.includes(p.id) ? prev.filter((x) => x !== p.id) : [...prev, p.id]
+                            )
+                          }
+                          style={{
+                            display: "flex", alignItems: "center", gap: 10,
+                            width: "100%", padding: "6px 8px",
+                            background: on ? "var(--nc-green-soft)" : "transparent",
+                            borderRadius: 4,
+                            fontSize: 12, textAlign: "left",
+                            cursor: "pointer",
+                          }}
+                        >
+                          <span
+                            style={{
+                              width: 14, height: 14, borderRadius: 3,
+                              border: "1.5px solid var(--nc-line)",
+                              background: on ? "var(--nc-green)" : "transparent",
+                              display: "flex", alignItems: "center", justifyContent: "center",
+                              color: "white", flexShrink: 0,
+                            }}
+                          >
+                            {on && <ICheck size={9} />}
+                          </span>
+                          <Avatar id={p.id} name={p.name} size="sm" />
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontWeight: 500 }}>{p.name}</div>
+                            {p.department && (
+                              <div style={{ fontSize: 10, color: "var(--nc-mute)" }}>{p.department}</div>
+                            )}
+                          </div>
+                        </button>
+                      );
+                    })
+                )}
+              </div>
+            </div>
+
+            {channelError && (
+              <div style={{ fontSize: 11.5, color: "var(--nc-danger)", marginBottom: 8 }}>{channelError}</div>
+            )}
+
+            <div
+              style={{
+                display: "flex", justifyContent: "flex-end", gap: 8,
+                paddingTop: 10, borderTop: "1px solid var(--nc-line)",
+              }}
+            >
+              <button
+                type="button"
+                className="nc-btn ghost"
+                style={{ fontSize: 12 }}
+                onClick={() => setChannelModalOpen(false)}
+                disabled={channelBusy}
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                className="nc-btn primary"
+                style={{ fontSize: 12 }}
+                disabled={channelBusy || !newName.trim()}
+              >
+                {channelBusy ? "Creando…" : "Crear canal"}
+              </button>
+            </div>
+          </form>
+        </ModalShell>
+      )}
     </div>
+  );
+}
+
+const menuItemStyle: React.CSSProperties = {
+  display: "block",
+  width: "100%",
+  textAlign: "left",
+  padding: "7px 10px",
+  fontSize: 12.5,
+  color: "var(--nc-ink)",
+  background: "transparent",
+  borderRadius: 4,
+  cursor: "pointer",
+};
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      style={{
+        fontSize: 9.5,
+        fontWeight: 600,
+        color: "var(--nc-mute)",
+        textTransform: "uppercase",
+        letterSpacing: "0.05em",
+        padding: "10px 14px 4px",
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function ChannelRow({
+  active,
+  onClick,
+  avatar,
+  title,
+  subtitle,
+}: {
+  active: boolean;
+  onClick: () => void;
+  avatar: React.ReactNode;
+  title: string;
+  subtitle: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        display: "flex", gap: 10,
+        padding: "8px 14px",
+        background: active ? "var(--nc-green-soft)" : "transparent",
+        borderBottom: "1px solid var(--nc-line-2)",
+        width: "100%", textAlign: "left", alignItems: "flex-start",
+        cursor: "pointer",
+      }}
+    >
+      {avatar}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div
+          style={{
+            fontSize: 12.5, fontWeight: 600, color: "var(--nc-ink)",
+            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+          }}
+        >
+          {title}
+        </div>
+        <div
+          style={{
+            fontSize: 11,
+            color: "var(--nc-mute)",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {subtitle}
+        </div>
+      </div>
+    </button>
+  );
+}
+
+function ModalShell({
+  title,
+  onClose,
+  children,
+}: {
+  title: string;
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <>
+      <div
+        onClick={onClose}
+        style={{ position: "fixed", inset: 0, background: "rgba(28,31,26,0.35)", zIndex: 40 }}
+      />
+      <div
+        style={{
+          position: "fixed", inset: 0,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          padding: 24, zIndex: 41,
+        }}
+      >
+        <div
+          style={{
+            width: "100%", maxWidth: 460,
+            background: "var(--nc-surface)",
+            borderRadius: "var(--r-lg)",
+            boxShadow: "0 20px 60px rgba(0,0,0,0.25)",
+            overflow: "hidden",
+          }}
+        >
+          <div
+            style={{
+              padding: "12px 16px",
+              borderBottom: "1px solid var(--nc-line)",
+              display: "flex", alignItems: "center", justifyContent: "space-between",
+            }}
+          >
+            <div style={{ fontSize: 13, fontWeight: 600 }}>{title}</div>
+            <button type="button" className="nc-icon-btn" aria-label="Cerrar" onClick={onClose}>
+              <IX size={14} />
+            </button>
+          </div>
+          {children}
+        </div>
+      </div>
+    </>
   );
 }

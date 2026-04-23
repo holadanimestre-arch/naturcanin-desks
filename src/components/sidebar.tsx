@@ -1,11 +1,11 @@
 import Link from "next/link";
 import {
-  IHome, IKanban, IList, ICal, IChat, IUsers, IUser, IClip, IChart, ISettings,
+  IHome, IKanban, IList, ICal, IChat, IUsers, IUser, IClip, IChart, ISettings, ILog,
 } from "./icons";
 import type { SVGProps } from "react";
 
 export type SidebarKey =
-  | "home" | "board" | "my" | "cal" | "chat" | "team" | "users" | "archive" | "stats";
+  | "home" | "board" | "my" | "cal" | "chat" | "team" | "users" | "archive" | "stats" | "logs";
 
 type Item = {
   k: SidebarKey;
@@ -16,15 +16,16 @@ type Item = {
 };
 
 const items: Item[] = [
-  { k: "home",    l: "Inicio",       href: "/",         Ic: IHome,   badge: 3 },
+  { k: "home",    l: "Inicio",       href: "/",         Ic: IHome },
   { k: "board",   l: "Tablero",      href: "/tablero",  Ic: IKanban },
   { k: "my",      l: "Mis tareas",   href: "/mis-tareas", Ic: IList },
   { k: "cal",     l: "Calendario",   href: "/calendario", Ic: ICal },
-  { k: "chat",    l: "Chat",         href: "/chat",     Ic: IChat,   badge: 6 },
+  { k: "chat",    l: "Chat",         href: "/chat",     Ic: IChat },
   { k: "team",    l: "Equipo",       href: "/equipo",   Ic: IUsers },
   { k: "users",   l: "Usuarios",     href: "/usuarios", Ic: IUser },
   { k: "archive", l: "Archivo",      href: "/archivo",  Ic: IClip },
   { k: "stats",   l: "Estadísticas", href: "/estadisticas", Ic: IChart },
+  { k: "logs",    l: "Logs",         href: "/logs",         Ic: ILog },
 ];
 
 export function Sidebar({

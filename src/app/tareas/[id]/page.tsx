@@ -5,16 +5,13 @@ import { Avatar, Priority, State, Tag } from "@/components/primitives";
 import { FileUpload } from "@/components/file-upload";
 import { CommentBox } from "@/components/comment-box";
 import { DeleteTaskBtn } from "@/components/delete-task-btn";
-import { ICheck, IChev, IClip, IEye, ILock, ISend } from "@/components/icons";
+import { SubtasksPanel } from "@/components/subtasks-panel";
+import { ICheck, IChev, IEye, ILock } from "@/components/icons";
 import {
   getTask, getTaskComments, getTaskFiles, getSignedUrl, getTaskActivity,
+  getTaskSubtasks,
   type ActivityEntry,
 } from "@/lib/supabase/queries";
-
-type SubtaskRow = { d: boolean; t: string };
-const subtasks: SubtaskRow[] = [
-  { d: false, t: "Pendiente de definir" },
-];
 
 function timeAgo(ts: string): string {
   const diff = Date.now() - new Date(ts).getTime();
@@ -37,11 +34,12 @@ export default async function TaskDetailPage({
 }) {
   const { id } = await params;
   const taskId = Number(id);
-  const [t, comments, files, activity] = await Promise.all([
+  const [t, comments, files, activity, subtasks] = await Promise.all([
     getTask(taskId),
     getTaskComments(taskId),
     getTaskFiles(taskId),
     getTaskActivity(taskId),
+    getTaskSubtasks(taskId),
   ]);
   if (!t) return notFound();
 
@@ -99,6 +97,9 @@ export default async function TaskDetailPage({
                 {t.desc}
               </p>
             )}
+
+            {/* Subtareas */}
+            <SubtasksPanel taskId={taskId} initial={subtasks} />
 
             {/* Archivos */}
             <div style={{ marginBottom: 24 }}>

@@ -100,3 +100,6 @@ export const IFlag = ({ size, ...p }: IconProps) => (
 export const ITrash = ({ size, ...p }: IconProps) => (
   <svg {...base(size)} {...p}><path d="M3 7h18M8 7V5a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2M19 7l-1 12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 7"/><path d="M10 11v6M14 11v6"/></svg>
 );
+export const ILog = ({ size, ...p }: IconProps) => (
+  <svg {...base(size)} {...p}><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 8h10M7 12h7M7 16h4"/></svg>
+);

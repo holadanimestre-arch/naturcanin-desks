@@ -18,6 +18,7 @@ export type Task = {
   prio: Priority;
   state: TaskState;
   due: string;
+  dueDate?: string | null;   // raw ISO date (YYYY-MM-DD) when available
   assignee: string[];        // PersonId (mock) or UUID (DB)
   assigneeNames?: string[];  // display names for UUID-based assignees
   comments: number;
