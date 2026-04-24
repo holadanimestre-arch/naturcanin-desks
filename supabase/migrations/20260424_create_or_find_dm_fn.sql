@@ -2,7 +2,7 @@
 -- ambos miembros ignorando RLS. Así el receptor siempre queda en la tabla
 -- aunque la política lo impida desde el cliente.
 create or replace function public.create_or_find_dm(p_other_user_id uuid)
-returns table(channel_id bigint, is_new boolean)
+returns table(r_channel_id bigint, r_is_new boolean)
 language plpgsql
 security definer
 set search_path = public

@@ -339,7 +339,7 @@ export function ChatClient({
       return;
     }
 
-    const channelId: number = rpcData[0].channel_id;
+    const channelId: number = rpcData[0].r_channel_id;
 
     // Fetch del canal con miembros para construir el objeto local
     const { data: ch } = await supabase
