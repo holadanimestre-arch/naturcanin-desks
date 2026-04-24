@@ -325,6 +325,11 @@ export function ChatClient({
       return;
     }
     setText("");
+    // Para DMs: notificar al receptor vía Broadcast para que aparezca
+    // el canal y el punto de no leído aunque no lo tuviera en su lista.
+    if (active?.is_dm && active.dm_other) {
+      notifyDm(active.dm_other.id, activeId);
+    }
   }
 
   async function openOrCreateDm(other: TeamPick) {
