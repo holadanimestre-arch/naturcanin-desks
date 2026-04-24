@@ -308,14 +308,16 @@ export function ChatClient({
       .maybeSingle();
 
     if (found) {
-      // Me aseguro de ser miembro
+      // Me aseguro de ser miembro (upsert para no fallar si ya existe)
       await supabase
         .from("chat_channel_members")
-        .insert([
-          { channel_id: found.id, user_id: me.id },
-          { channel_id: found.id, user_id: other.id },
-        ])
-        .select();
+        .upsert(
+          [
+            { channel_id: found.id, user_id: me.id },
+            { channel_id: found.id, user_id: other.id },
+          ],
+          { onConflict: "channel_id,user_id", ignoreDuplicates: true }
+        );
       const asChannel: Channel = {
         id: found.id,
         name: found.name,
