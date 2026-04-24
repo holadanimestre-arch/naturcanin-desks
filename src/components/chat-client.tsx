@@ -205,6 +205,50 @@ export function ChatClient({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [channelList.length]);
 
+  // Broadcast: escucha notificaciones de DM nuevos dirigidas a este usuario.
+  // Funciona sin RLS — Supabase Broadcast no aplica políticas de fila.
+  useEffect(() => {
+    const sub = supabase
+      .channel(`dm-notify:${me.id}`)
+      .on("broadcast", { event: "new_dm" }, async ({ payload }) => {
+        const channelId = payload?.channel_id as number | undefined;
+        if (!channelId) return;
+
+        // Fetch del canal: User B ya es miembro en este punto
+        const { data: ch } = await supabase
+          .from("chat_channels")
+          .select("id, name, description, is_dm, dm_key, chat_channel_members(user_id, profiles(name))")
+          .eq("id", channelId)
+          .maybeSingle();
+
+        if (!ch) return;
+
+        const members = ((ch as any).chat_channel_members ?? []).map((mem: any) => {
+          const prof = Array.isArray(mem.profiles) ? mem.profiles[0] : mem.profiles;
+          return { id: mem.user_id, name: prof?.name ?? "—" };
+        });
+        const isDm = Boolean((ch as any).is_dm);
+        const dm_other = isDm ? members.find((mem: any) => mem.id !== me.id) : undefined;
+        const newChannel: Channel = {
+          id: (ch as any).id,
+          name: (ch as any).name,
+          description: (ch as any).description,
+          is_dm: isDm,
+          members,
+          dm_other,
+        };
+
+        setChannelList((prev) =>
+          prev.some((c) => c.id === newChannel.id) ? prev : [...prev, newChannel]
+        );
+        setUnread((prev) => new Set([...prev, channelId]));
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(sub); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   async function fillAuthors(userIds: string[]) {
     const missing = userIds.filter((id) => id && !authorCache[id]);
     if (missing.length === 0) return;
@@ -258,6 +302,15 @@ export function ChatClient({
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.length]);
+
+  function notifyDm(toUserId: string, channelId: number) {
+    const bc = supabase.channel(`dm-notify:${toUserId}`);
+    bc.subscribe((status) => {
+      if (status !== "SUBSCRIBED") return;
+      bc.send({ type: "broadcast", event: "new_dm", payload: { channel_id: channelId } })
+        .finally(() => supabase.removeChannel(bc));
+    });
+  }
 
   async function sendMessage() {
     const body = text.trim();
@@ -322,6 +375,7 @@ export function ChatClient({
       setActiveId(asChannel.id);
       setDmModalOpen(false);
       setDmBusy(false);
+      notifyDm(other.id, found.id);
       router.refresh();
       return;
     }
@@ -367,6 +421,7 @@ export function ChatClient({
     setActiveId(asChannel.id);
     setDmModalOpen(false);
     setDmBusy(false);
+    notifyDm(other.id, created.id);
     router.refresh();
   }
 
