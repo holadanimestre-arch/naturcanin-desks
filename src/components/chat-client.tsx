@@ -167,7 +167,67 @@ export function ChatClient({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [channelList.length]);
 
-  // Polling cada 5 s: detecta canales nuevos a los que me han añadido.
+  // Convierte raw channel data en Channel y lo añade al estado si es nuevo.
+  async function ingestNewChannelIds(ids: number[]) {
+    const fresh = ids.filter((id) => !channelIdsRef.current.has(id));
+    if (fresh.length === 0) return;
+
+    const { data: chData } = await supabase
+      .from("chat_channels")
+      .select("id, name, description, is_dm, dm_key, chat_channel_members(user_id, profiles(name))")
+      .in("id", fresh);
+
+    if (!chData || chData.length === 0) return;
+
+    const newChs: Channel[] = (chData as any[]).map((ch) => {
+      const members: MemberLite[] = (ch.chat_channel_members ?? []).map((mem: any) => {
+        const prof = Array.isArray(mem.profiles) ? mem.profiles[0] : mem.profiles;
+        return { id: mem.user_id, name: prof?.name ?? "—" };
+      });
+      const isDm = Boolean(ch.is_dm);
+      return {
+        id: ch.id,
+        name: ch.name,
+        description: ch.description,
+        is_dm: isDm,
+        members,
+        dm_other: isDm ? members.find((m) => m.id !== me.id) : undefined,
+      };
+    });
+
+    setChannelList((prev) => {
+      const additions = newChs.filter((nc) => !prev.some((p) => p.id === nc.id));
+      if (additions.length === 0) return prev;
+      setUnread((u) => new Set([...u, ...additions.map((c) => c.id)]));
+      return [...prev, ...additions];
+    });
+  }
+
+  // Realtime: reacciona al instante cuando alguien me añade a un canal.
+  // Requiere que chat_channel_members esté en supabase_realtime publication.
+  useEffect(() => {
+    const sub = supabase
+      .channel("my-memberships-rt")
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "chat_channel_members",
+          filter: `user_id=eq.${me.id}`,
+        },
+        (payload) => {
+          const channelId = (payload.new as any).channel_id as number;
+          ingestNewChannelIds([channelId]);
+        }
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(sub); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Polling cada 5 s como respaldo al realtime.
   useEffect(() => {
     const poll = async () => {
       const { data: memberships } = await supabase
@@ -176,38 +236,7 @@ export function ChatClient({
         .eq("user_id", me.id);
 
       const serverIds = (memberships ?? []).map((m: any) => m.channel_id as number);
-      const newIds = serverIds.filter((id) => !channelIdsRef.current.has(id));
-      if (newIds.length === 0) return;
-
-      const { data: chData } = await supabase
-        .from("chat_channels")
-        .select("id, name, description, is_dm, dm_key, chat_channel_members(user_id, profiles(name))")
-        .in("id", newIds);
-
-      if (!chData || chData.length === 0) return;
-
-      const newChs: Channel[] = (chData as any[]).map((ch) => {
-        const members: MemberLite[] = (ch.chat_channel_members ?? []).map((mem: any) => {
-          const prof = Array.isArray(mem.profiles) ? mem.profiles[0] : mem.profiles;
-          return { id: mem.user_id, name: prof?.name ?? "—" };
-        });
-        const isDm = Boolean(ch.is_dm);
-        return {
-          id: ch.id,
-          name: ch.name,
-          description: ch.description,
-          is_dm: isDm,
-          members,
-          dm_other: isDm ? members.find((m) => m.id !== me.id) : undefined,
-        };
-      });
-
-      setChannelList((prev) => {
-        const additions = newChs.filter((nc) => !prev.some((p) => p.id === nc.id));
-        if (additions.length === 0) return prev;
-        setUnread((u) => new Set([...u, ...additions.map((c) => c.id)]));
-        return [...prev, ...additions];
-      });
+      await ingestNewChannelIds(serverIds);
     };
 
     const interval = setInterval(poll, 5000);
