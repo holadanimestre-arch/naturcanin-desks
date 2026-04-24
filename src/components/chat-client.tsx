@@ -136,23 +136,55 @@ export function ChatClient({
     return () => window.removeEventListener("mousedown", onDown);
   }, []);
 
-  // Suscripción global: detecta mensajes nuevos en todos mis canales
+  // Suscripción global: detecta mensajes nuevos en todos mis canales.
+  // Si llega un mensaje de un canal desconocido, lo cargamos (RLS solo
+  // deja pasar mensajes de canales donde el usuario es miembro).
   useEffect(() => {
     const myChannelIds = channelList.map((c) => c.id);
-    if (myChannelIds.length === 0) return;
 
     const sub = supabase
       .channel("unread-tracker")
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "chat_messages" },
-        (payload) => {
+        async (payload) => {
           const m = payload.new as Message;
-          if (!myChannelIds.includes(m.channel_id)) return;
-          // Actualizar preview del sidebar
-          setLastMsgs((prev) => ({ ...prev, [m.channel_id]: { text: m.text, user_id: m.user_id } }));
-          // Marcar como no leído si no es el canal activo
-          if (m.channel_id !== activeId) {
+
+          if (myChannelIds.includes(m.channel_id)) {
+            // Canal conocido: actualizar preview y marcar no leído
+            setLastMsgs((prev) => ({ ...prev, [m.channel_id]: { text: m.text, user_id: m.user_id } }));
+            if (m.channel_id !== activeId) {
+              setUnread((prev) => new Set([...prev, m.channel_id]));
+            }
+          } else {
+            // Canal desconocido: si somos miembros (RLS lo permite), lo añadimos al sidebar
+            const { data: ch } = await supabase
+              .from("chat_channels")
+              .select("id, name, description, is_dm, dm_key, chat_channel_members(user_id, profiles(name))")
+              .eq("id", m.channel_id)
+              .maybeSingle();
+
+            if (!ch) return; // RLS lo bloqueó → no somos miembros
+
+            const members = ((ch as any).chat_channel_members ?? []).map((mem: any) => {
+              const prof = Array.isArray(mem.profiles) ? mem.profiles[0] : mem.profiles;
+              return { id: mem.user_id, name: prof?.name ?? "—" };
+            });
+            const isDm = Boolean((ch as any).is_dm);
+            const dm_other = isDm ? members.find((mem: any) => mem.id !== me.id) : undefined;
+            const newChannel: Channel = {
+              id: (ch as any).id,
+              name: (ch as any).name,
+              description: (ch as any).description,
+              is_dm: isDm,
+              members,
+              dm_other,
+            };
+
+            setChannelList((prev) =>
+              prev.some((c) => c.id === newChannel.id) ? prev : [...prev, newChannel]
+            );
+            setLastMsgs((prev) => ({ ...prev, [m.channel_id]: { text: m.text, user_id: m.user_id } }));
             setUnread((prev) => new Set([...prev, m.channel_id]));
           }
         }
