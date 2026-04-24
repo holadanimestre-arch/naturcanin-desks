@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import { Avatar } from "./primitives";
 import { IMore, IPlus, ISearch, ISend, IX, ICheck } from "./icons";
 import { createClient } from "@/lib/supabase/client";
@@ -78,7 +77,6 @@ export function ChatClient({
   channels: Channel[];
   team: TeamPick[];
 }) {
-  const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const [channelList, setChannelList] = useState<Channel[]>(channels);
   const [activeId, setActiveId] = useState<number | null>(channels[0]?.id ?? null);
@@ -98,10 +96,8 @@ export function ChatClient({
   });
   const [unread, setUnread] = useState<Set<number>>(new Set());
 
-  // IDs de canales que tienen mensajes nuevos pero aún no están en channelList.
-  // Se rellenan cuando llega un mensaje de canal desconocido y se consumen
-  // cuando el servidor nos envía el canal actualizado tras router.refresh().
-  const pendingUnreadRef = useRef<Set<number>>(new Set());
+  // Ref con los IDs actuales de canales: lo usa el polling sin necesitar re-suscribirse.
+  const channelIdsRef = useRef<Set<number>>(new Set(channels.map((c) => c.id)));
 
   const [plusMenuOpen, setPlusMenuOpen] = useState(false);
   const plusRef = useRef<HTMLDivElement>(null);
@@ -141,40 +137,12 @@ export function ChatClient({
     return () => window.removeEventListener("mousedown", onDown);
   }, []);
 
-  // Cuando el servidor envía channels actualizados (tras router.refresh()),
-  // mergeamos los nuevos canales al estado y aplicamos los unreads pendientes.
+  // Mantiene channelIdsRef sincronizado con el estado actual.
   useEffect(() => {
-    setChannelList((prev) => {
-      const newOnes = channels.filter((c) => !prev.some((p) => p.id === c.id));
-      if (newOnes.length === 0) return prev;
+    channelIdsRef.current = new Set(channelList.map((c) => c.id));
+  }, [channelList]);
 
-      setLastMsgs((lm) => {
-        const next = { ...lm };
-        for (const c of newOnes) {
-          if (c.lastMsg && !next[c.id]) {
-            next[c.id] = { text: c.lastMsg.text, user_id: c.lastMsg.user_id };
-          }
-        }
-        return next;
-      });
-      setUnread((u) => {
-        const next = new Set(u);
-        for (const c of newOnes) {
-          if (pendingUnreadRef.current.has(c.id)) {
-            next.add(c.id);
-            pendingUnreadRef.current.delete(c.id);
-          }
-        }
-        return next;
-      });
-
-      return [...prev, ...newOnes];
-    });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [channels]);
-
-  // Suscripción global a chat_messages: detecta mensajes en canales conocidos
-  // y, si el canal es desconocido, pide refresh al servidor para obtenerlo.
+  // Suscripción a mensajes en canales conocidos para actualizar previews y no-leídos.
   useEffect(() => {
     const myChannelIds = channelList.map((c) => c.id);
 
@@ -185,17 +153,11 @@ export function ChatClient({
         { event: "INSERT", schema: "public", table: "chat_messages" },
         (payload) => {
           const m = payload.new as Message;
-
           if (myChannelIds.includes(m.channel_id)) {
             setLastMsgs((prev) => ({ ...prev, [m.channel_id]: { text: m.text, user_id: m.user_id } }));
             if (m.channel_id !== activeId) {
               setUnread((prev) => new Set([...prev, m.channel_id]));
             }
-          } else {
-            // Canal desconocido: guardamos el ID como pendiente y pedimos
-            // al servidor la lista actualizada de canales.
-            pendingUnreadRef.current.add(m.channel_id);
-            router.refresh();
           }
         }
       )
@@ -205,47 +167,51 @@ export function ChatClient({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [channelList.length]);
 
-  // Broadcast: escucha notificaciones de DM nuevos dirigidas a este usuario.
-  // Funciona sin RLS — Supabase Broadcast no aplica políticas de fila.
+  // Polling cada 5 s: detecta canales nuevos a los que me han añadido.
   useEffect(() => {
-    const sub = supabase
-      .channel(`dm-notify:${me.id}`)
-      .on("broadcast", { event: "new_dm" }, async ({ payload }) => {
-        const channelId = payload?.channel_id as number | undefined;
-        if (!channelId) return;
+    const poll = async () => {
+      const { data: memberships } = await supabase
+        .from("chat_channel_members")
+        .select("channel_id")
+        .eq("user_id", me.id);
 
-        // Fetch del canal: User B ya es miembro en este punto
-        const { data: ch } = await supabase
-          .from("chat_channels")
-          .select("id, name, description, is_dm, dm_key, chat_channel_members(user_id, profiles(name))")
-          .eq("id", channelId)
-          .maybeSingle();
+      const serverIds = (memberships ?? []).map((m: any) => m.channel_id as number);
+      const newIds = serverIds.filter((id) => !channelIdsRef.current.has(id));
+      if (newIds.length === 0) return;
 
-        if (!ch) return;
+      const { data: chData } = await supabase
+        .from("chat_channels")
+        .select("id, name, description, is_dm, dm_key, chat_channel_members(user_id, profiles(name))")
+        .in("id", newIds);
 
-        const members = ((ch as any).chat_channel_members ?? []).map((mem: any) => {
+      if (!chData || chData.length === 0) return;
+
+      const newChs: Channel[] = (chData as any[]).map((ch) => {
+        const members: MemberLite[] = (ch.chat_channel_members ?? []).map((mem: any) => {
           const prof = Array.isArray(mem.profiles) ? mem.profiles[0] : mem.profiles;
           return { id: mem.user_id, name: prof?.name ?? "—" };
         });
-        const isDm = Boolean((ch as any).is_dm);
-        const dm_other = isDm ? members.find((mem: any) => mem.id !== me.id) : undefined;
-        const newChannel: Channel = {
-          id: (ch as any).id,
-          name: (ch as any).name,
-          description: (ch as any).description,
+        const isDm = Boolean(ch.is_dm);
+        return {
+          id: ch.id,
+          name: ch.name,
+          description: ch.description,
           is_dm: isDm,
           members,
-          dm_other,
+          dm_other: isDm ? members.find((m) => m.id !== me.id) : undefined,
         };
+      });
 
-        setChannelList((prev) =>
-          prev.some((c) => c.id === newChannel.id) ? prev : [...prev, newChannel]
-        );
-        setUnread((prev) => new Set([...prev, channelId]));
-      })
-      .subscribe();
+      setChannelList((prev) => {
+        const additions = newChs.filter((nc) => !prev.some((p) => p.id === nc.id));
+        if (additions.length === 0) return prev;
+        setUnread((u) => new Set([...u, ...additions.map((c) => c.id)]));
+        return [...prev, ...additions];
+      });
+    };
 
-    return () => { supabase.removeChannel(sub); };
+    const interval = setInterval(poll, 5000);
+    return () => clearInterval(interval);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -303,15 +269,6 @@ export function ChatClient({
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.length]);
 
-  function notifyDm(toUserId: string, channelId: number) {
-    const bc = supabase.channel(`dm-notify:${toUserId}`);
-    bc.subscribe((status) => {
-      if (status !== "SUBSCRIBED") return;
-      bc.send({ type: "broadcast", event: "new_dm", payload: { channel_id: channelId } })
-        .finally(() => supabase.removeChannel(bc));
-    });
-  }
-
   async function sendMessage() {
     const body = text.trim();
     if (!body || activeId == null || sending) return;
@@ -325,11 +282,6 @@ export function ChatClient({
       return;
     }
     setText("");
-    // Para DMs: notificar al receptor vía Broadcast para que aparezca
-    // el canal y el punto de no leído aunque no lo tuviera en su lista.
-    if (active?.is_dm && active.dm_other) {
-      notifyDm(active.dm_other.id, activeId);
-    }
   }
 
   async function openOrCreateDm(other: TeamPick) {
@@ -380,8 +332,6 @@ export function ChatClient({
       setActiveId(asChannel.id);
       setDmModalOpen(false);
       setDmBusy(false);
-      notifyDm(other.id, found.id);
-      router.refresh();
       return;
     }
 
@@ -426,8 +376,6 @@ export function ChatClient({
     setActiveId(asChannel.id);
     setDmModalOpen(false);
     setDmBusy(false);
-    notifyDm(other.id, created.id);
-    router.refresh();
   }
 
   async function createChannel() {
@@ -481,7 +429,6 @@ export function ChatClient({
     setNewMembers([]);
     setChannelModalOpen(false);
     setChannelBusy(false);
-    router.refresh();
   }
 
   const filteredDmCandidates = team
