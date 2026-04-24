@@ -143,9 +143,8 @@ export function ChatClient({
   }, [channelList]);
 
   // Suscripción a mensajes en canales conocidos para actualizar previews y no-leídos.
+  // Usa channelIdsRef.current para evitar stale closures cuando se ingieren canales nuevos.
   useEffect(() => {
-    const myChannelIds = channelList.map((c) => c.id);
-
     const sub = supabase
       .channel("unread-tracker")
       .on(
@@ -153,7 +152,7 @@ export function ChatClient({
         { event: "INSERT", schema: "public", table: "chat_messages" },
         (payload) => {
           const m = payload.new as Message;
-          if (myChannelIds.includes(m.channel_id)) {
+          if (channelIdsRef.current.has(m.channel_id)) {
             setLastMsgs((prev) => ({ ...prev, [m.channel_id]: { text: m.text, user_id: m.user_id } }));
             if (m.channel_id !== activeId) {
               setUnread((prev) => new Set([...prev, m.channel_id]));
@@ -161,11 +160,13 @@ export function ChatClient({
           }
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log("[chat] unread-tracker status:", status);
+      });
 
     return () => { supabase.removeChannel(sub); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [channelList.length]);
+  }, []);
 
   // Convierte raw channel data en Channel y lo añade al estado si es nuevo.
   async function ingestNewChannelIds(ids: number[]) {
@@ -218,29 +219,49 @@ export function ChatClient({
         },
         (payload) => {
           const channelId = (payload.new as any).channel_id as number;
+          console.log("[chat] new membership via realtime:", channelId);
           ingestNewChannelIds([channelId]);
         }
       )
-      .subscribe();
+      .subscribe((status, err) => {
+        console.log("[chat] my-memberships-rt status:", status, err ?? "");
+      });
 
     return () => { supabase.removeChannel(sub); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Polling cada 5 s como respaldo al realtime.
+  // Polling cada 5 s como respaldo al realtime. Corre inmediatamente al montar.
   useEffect(() => {
+    let cancelled = false;
+
     const poll = async () => {
-      const { data: memberships } = await supabase
+      const { data: memberships, error } = await supabase
         .from("chat_channel_members")
         .select("channel_id")
         .eq("user_id", me.id);
 
+      if (cancelled) return;
+      if (error) {
+        console.warn("[chat] poll error:", error.message);
+        return;
+      }
+
       const serverIds = (memberships ?? []).map((m: any) => m.channel_id as number);
+      const knownIds = channelIdsRef.current;
+      const newcomers = serverIds.filter((id) => !knownIds.has(id));
+      if (newcomers.length > 0) {
+        console.log("[chat] poll found new channels:", newcomers);
+      }
       await ingestNewChannelIds(serverIds);
     };
 
+    poll();
     const interval = setInterval(poll, 5000);
-    return () => clearInterval(interval);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
