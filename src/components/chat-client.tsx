@@ -163,6 +163,59 @@ export function ChatClient({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [channelList.length]);
 
+  // Cuando otro usuario nos añade a un DM, llega un INSERT en chat_channel_members.
+  // Lo detectamos y cargamos el canal para que aparezca sin recargar la página.
+  useEffect(() => {
+    const sub = supabase
+      .channel("new-membership-tracker")
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "chat_channel_members",
+          filter: `user_id=eq.${me.id}`,
+        },
+        async (payload) => {
+          const channelId = (payload.new as { channel_id: number }).channel_id;
+          // Si ya lo tenemos en lista, ignorar
+          setChannelList((prev) => {
+            if (prev.some((c) => c.id === channelId)) return prev;
+            // Carga asíncrona fuera del setter
+            return prev;
+          });
+          // Fetch detalles del canal
+          const { data: ch } = await supabase
+            .from("chat_channels")
+            .select("id, name, description, is_dm, dm_key, chat_channel_members(user_id, profiles(name))")
+            .eq("id", channelId)
+            .single();
+          if (!ch) return;
+          const members = ((ch as any).chat_channel_members ?? []).map((m: any) => {
+            const prof = Array.isArray(m.profiles) ? m.profiles[0] : m.profiles;
+            return { id: m.user_id, name: prof?.name ?? "—" };
+          });
+          const isDm = Boolean((ch as any).is_dm);
+          const dm_other = isDm ? members.find((m: any) => m.id !== me.id) : undefined;
+          const newChannel: Channel = {
+            id: (ch as any).id,
+            name: (ch as any).name,
+            description: (ch as any).description,
+            is_dm: isDm,
+            members,
+            dm_other,
+          };
+          setChannelList((prev) =>
+            prev.some((c) => c.id === newChannel.id) ? prev : [...prev, newChannel]
+          );
+        }
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(sub); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   async function fillAuthors(userIds: string[]) {
     const missing = userIds.filter((id) => id && !authorCache[id]);
     if (missing.length === 0) return;
