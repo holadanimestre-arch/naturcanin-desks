@@ -1,5 +1,5 @@
 export type PersonId = "lau" | "car" | "ana" | "pab" | "mar" | "jor";
-export type TagKey = "produccion" | "logistica" | "ventas" | "calidad" | "admin";
+export type TagKey = "fabricacion" | "logistica" | "comercial" | "administrativo" | "calidad" | "marketing" | "compras" | "gerencia";
 export type Priority = "high" | "med" | "low";
 export type TaskState = "pending" | "progress" | "done";
 
@@ -41,26 +41,29 @@ export const peopleById: Record<PersonId, Person> = Object.fromEntries(
 ) as Record<PersonId, Person>;
 
 export const tags: Record<TagKey, { label: string; cls: string }> = {
-  produccion: { label: "Producción", cls: "produccion" },
-  logistica:  { label: "Logística",  cls: "logistica" },
-  ventas:     { label: "Ventas",     cls: "ventas" },
-  calidad:    { label: "Calidad",    cls: "calidad" },
-  admin:      { label: "Admin",      cls: "admin" },
+  fabricacion:    { label: "Fabricación",   cls: "fabricacion" },
+  logistica:      { label: "Logística",     cls: "logistica" },
+  comercial:      { label: "Comercial",     cls: "comercial" },
+  administrativo: { label: "Administrativo", cls: "administrativo" },
+  calidad:        { label: "Calidad",       cls: "calidad" },
+  marketing:      { label: "Marketing",     cls: "marketing" },
+  compras:        { label: "Compras",       cls: "compras" },
+  gerencia:       { label: "Gerencia",      cls: "gerencia" },
 };
 
 export const tasks: Task[] = [
   { id: 1,  title: "Revisar lote 204-A de pollo",        tag: "calidad",    prio: "high", state: "progress", due: "Hoy",    assignee: ["pab"],        comments: 3, files: 2, subs: { d: 2, t: 5 }, desc: "Inspección de lote antes de envasado. Verificar temperatura de cámara y trazabilidad del proveedor." },
-  { id: 2,  title: "Formular receta nueva línea puppy",  tag: "produccion", prio: "med",  state: "progress", due: "24 abr", assignee: ["lau", "jor"], comments: 8, files: 5, subs: { d: 3, t: 6 } },
-  { id: 3,  title: "Pedido distribuidor Galicia",        tag: "logistica",  prio: "high", state: "pending",  due: "Mañana", assignee: ["car"],        comments: 1, files: 1, subs: { d: 0, t: 4 } },
-  { id: 4,  title: "Preparar ficha marca blanca Petfit", tag: "ventas",     prio: "med",  state: "pending",  due: "26 abr", assignee: ["ana"],        comments: 2, files: 3, subs: { d: 1, t: 3 } },
-  { id: 5,  title: "Inventario cámara congelación 2",    tag: "logistica",  prio: "low",  state: "pending",  due: "28 abr", assignee: ["car", "jor"], comments: 0, files: 0, subs: { d: 0, t: 5 } },
-  { id: 6,  title: "Responder reseñas web (abril)",      tag: "ventas",     prio: "low",  state: "progress", due: "25 abr", assignee: ["ana"],        comments: 4, files: 0 },
-  { id: 7,  title: "Actualizar etiquetas UE 2026",       tag: "calidad",    prio: "high", state: "pending",  due: "30 abr", assignee: ["pab", "mar"], comments: 6, files: 4, subs: { d: 1, t: 8 } },
-  { id: 8,  title: "Cierre contabilidad Q1",             tag: "admin",      prio: "med",  state: "progress", due: "29 abr", assignee: ["mar"],        comments: 2, files: 7 },
-  { id: 9,  title: "Limpieza semanal sala de mezclas",   tag: "produccion", prio: "low",  state: "done",     due: "20 abr", assignee: ["jor"],        comments: 0, files: 1 },
-  { id: 10, title: "Envíos lote 87 (España)",            tag: "logistica",  prio: "med",  state: "done",     due: "19 abr", assignee: ["car"],        comments: 1, files: 2 },
-  { id: 11, title: "Formación seguridad alimentaria",    tag: "calidad",    prio: "med",  state: "done",     due: "18 abr", assignee: ["pab", "lau"], comments: 3, files: 0 },
-  { id: 12, title: "Muestras clínica veterinaria Sevilla", tag: "ventas",   prio: "med",  state: "pending",  due: "2 may",  assignee: ["ana"],        comments: 0, files: 1 },
+  { id: 2,  title: "Formular receta nueva línea puppy",  tag: "fabricacion",    prio: "med",  state: "progress", due: "24 abr", assignee: ["lau", "jor"], comments: 8, files: 5, subs: { d: 3, t: 6 } },
+  { id: 3,  title: "Pedido distribuidor Galicia",        tag: "logistica",      prio: "high", state: "pending",  due: "Mañana", assignee: ["car"],        comments: 1, files: 1, subs: { d: 0, t: 4 } },
+  { id: 4,  title: "Preparar ficha marca blanca Petfit", tag: "comercial",      prio: "med",  state: "pending",  due: "26 abr", assignee: ["ana"],        comments: 2, files: 3, subs: { d: 1, t: 3 } },
+  { id: 5,  title: "Inventario cámara congelación 2",    tag: "logistica",      prio: "low",  state: "pending",  due: "28 abr", assignee: ["car", "jor"], comments: 0, files: 0, subs: { d: 0, t: 5 } },
+  { id: 6,  title: "Responder reseñas web (abril)",      tag: "comercial",      prio: "low",  state: "progress", due: "25 abr", assignee: ["ana"],        comments: 4, files: 0 },
+  { id: 7,  title: "Actualizar etiquetas UE 2026",       tag: "calidad",        prio: "high", state: "pending",  due: "30 abr", assignee: ["pab", "mar"], comments: 6, files: 4, subs: { d: 1, t: 8 } },
+  { id: 8,  title: "Cierre contabilidad Q1",             tag: "administrativo", prio: "med",  state: "progress", due: "29 abr", assignee: ["mar"],        comments: 2, files: 7 },
+  { id: 9,  title: "Limpieza semanal sala de mezclas",   tag: "fabricacion",    prio: "low",  state: "done",     due: "20 abr", assignee: ["jor"],        comments: 0, files: 1 },
+  { id: 10, title: "Envíos lote 87 (España)",            tag: "logistica",      prio: "med",  state: "done",     due: "19 abr", assignee: ["car"],        comments: 1, files: 2 },
+  { id: 11, title: "Formación seguridad alimentaria",    tag: "calidad",        prio: "med",  state: "done",     due: "18 abr", assignee: ["pab", "lau"], comments: 3, files: 0 },
+  { id: 12, title: "Muestras clínica veterinaria Sevilla", tag: "comercial",    prio: "med",  state: "pending",  due: "2 may",  assignee: ["ana"],        comments: 0, files: 1 },
 ];
 
 export type Notification = {

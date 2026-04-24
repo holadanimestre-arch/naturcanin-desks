@@ -32,11 +32,14 @@
   --pr-low: #8FB265;
 
   /* Category tags */
-  --tag-produccion: #8FB265;
-  --tag-logistica: #6C98C2;
-  --tag-ventas: #E39454;
-  --tag-calidad: #A57CC1;
-  --tag-admin: #7A8590;
+  --tag-fabricacion:   #8FB265;
+  --tag-logistica:     #6C98C2;
+  --tag-comercial:     #E39454;
+  --tag-administrativo:#7A8590;
+  --tag-calidad:       #A57CC1;
+  --tag-marketing:     #E06FA8;
+  --tag-compras:       #48B0A0;
+  --tag-gerencia:      #8B6B8E;
 
   /* Shape */
   --r-xs: 4px;
@@ -141,11 +144,14 @@ input, textarea, select { font-family: inherit; }
   padding: 1px 7px; border-radius: 3px;
   font-size: 10px; font-weight: 500; letter-spacing: 0.01em;
 }
-.nc-tag.produccion { background: color-mix(in oklab, var(--tag-produccion) 18%, transparent); color: var(--tag-produccion); }
-.nc-tag.logistica  { background: color-mix(in oklab, var(--tag-logistica) 18%, transparent); color: var(--tag-logistica); }
-.nc-tag.ventas     { background: color-mix(in oklab, var(--tag-ventas) 18%, transparent); color: var(--tag-ventas); }
-.nc-tag.calidad    { background: color-mix(in oklab, var(--tag-calidad) 18%, transparent); color: var(--tag-calidad); }
-.nc-tag.admin      { background: color-mix(in oklab, var(--tag-admin) 18%, transparent); color: var(--tag-admin); }
+.nc-tag.fabricacion    { background: color-mix(in oklab, var(--tag-fabricacion) 18%, transparent);    color: var(--tag-fabricacion); }
+.nc-tag.logistica      { background: color-mix(in oklab, var(--tag-logistica) 18%, transparent);      color: var(--tag-logistica); }
+.nc-tag.comercial      { background: color-mix(in oklab, var(--tag-comercial) 18%, transparent);      color: var(--tag-comercial); }
+.nc-tag.administrativo { background: color-mix(in oklab, var(--tag-administrativo) 18%, transparent); color: var(--tag-administrativo); }
+.nc-tag.calidad        { background: color-mix(in oklab, var(--tag-calidad) 18%, transparent);        color: var(--tag-calidad); }
+.nc-tag.marketing      { background: color-mix(in oklab, var(--tag-marketing) 18%, transparent);      color: var(--tag-marketing); }
+.nc-tag.compras        { background: color-mix(in oklab, var(--tag-compras) 18%, transparent);        color: var(--tag-compras); }
+.nc-tag.gerencia       { background: color-mix(in oklab, var(--tag-gerencia) 18%, transparent);       color: var(--tag-gerencia); }
 
 .nc-priority {
   display: inline-flex; align-items: center; gap: 4px;

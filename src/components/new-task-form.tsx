@@ -22,7 +22,7 @@ export function NewTaskForm({
 }) {
   const router = useRouter();
   const [prio, setPrio] = useState<Prio>("med");
-  const [tag, setTag] = useState<TagKey>("produccion");
+  const [tag, setTag] = useState<TagKey>("fabricacion");
   const [assignees, setAssignees] = useState<string[]>([me.id]);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -121,7 +121,7 @@ export function NewTaskForm({
   }
 
   const prioLabels: Record<Prio, string> = { low: "Baja", med: "Media", high: "Alta" };
-  const tags: TagKey[] = ["produccion", "logistica", "ventas", "calidad", "admin"];
+  const tags: TagKey[] = ["fabricacion", "logistica", "comercial", "administrativo", "calidad", "marketing", "compras", "gerencia"];
 
   return (
     <>

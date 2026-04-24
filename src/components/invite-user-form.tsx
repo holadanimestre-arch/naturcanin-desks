@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { IPlus } from "./icons";
 import { inviteUser, createUserWithPassword } from "@/app/usuarios/actions";
 
-const DEPARTMENTS = ["Comercial", "Administrativo", "Gerencia", "Marketing", "Logístico", "Compras"];
+const DEPARTMENTS = ["Fabricación", "Logística", "Comercial", "Administrativo", "Calidad", "Marketing", "Compras", "Gerencia"];
 
 type Mode = "invite" | "password";
 
@@ -28,7 +28,7 @@ export function InviteUserForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPwd, setShowPwd] = useState(true);
-  const [department, setDepartment] = useState("Comercial");
+  const [department, setDepartment] = useState("Fabricación");
   const [role, setRole] = useState<"usuario" | "admin">("usuario");
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
