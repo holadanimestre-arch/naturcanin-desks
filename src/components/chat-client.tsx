@@ -118,6 +118,9 @@ export function ChatClient({
   const [channelBusy, setChannelBusy] = useState(false);
   const [channelError, setChannelError] = useState<string | null>(null);
 
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  const moreRef = useRef<HTMLDivElement>(null);
+
   const active = channelList.find((c) => c.id === activeId) ?? null;
   const dms = channelList.filter((c) => c.is_dm);
   const rooms = channelList.filter((c) => !c.is_dm);
@@ -136,6 +139,7 @@ export function ChatClient({
   useEffect(() => {
     function onDown(e: MouseEvent) {
       if (!plusRef.current?.contains(e.target as Node)) setPlusMenuOpen(false);
+      if (!moreRef.current?.contains(e.target as Node)) setMoreMenuOpen(false);
     }
     window.addEventListener("mousedown", onDown);
     return () => window.removeEventListener("mousedown", onDown);
@@ -424,6 +428,27 @@ export function ChatClient({
       setMessages((prev) => (prev.some((x) => x.id === m.id) ? prev : [...prev, m]));
       setLastMsgs((prev) => ({ ...prev, [activeId]: { text: body, user_id: me.id, created_at: m.created_at } }));
     }
+  }
+
+  async function deleteChannel(channelId: number) {
+    const ch = channelList.find((c) => c.id === channelId);
+    const label = ch?.is_dm
+      ? `la conversación con ${ch.dm_other?.name ?? "esta persona"}`
+      : `el canal #${ch?.name}`;
+    if (!confirm(`¿Eliminar ${label}? Esta acción no se puede deshacer.`)) return;
+
+    const { error } = await supabase.from("chat_channels").delete().eq("id", channelId);
+    if (error) {
+      alert("No se pudo eliminar: " + error.message);
+      return;
+    }
+    setChannelList((prev) => {
+      const next = prev.filter((c) => c.id !== channelId);
+      if (activeId === channelId) setActiveId(next[0]?.id ?? null);
+      return next;
+    });
+    setLastMsgs((prev) => { const n = { ...prev }; delete n[channelId]; return n; });
+    setUnread((prev) => { const n = new Set(prev); n.delete(channelId); return n; });
   }
 
   async function openOrCreateDm(other: TeamPick) {
@@ -724,9 +749,44 @@ export function ChatClient({
                 </div>
               </div>
               <div style={{ flex: 1 }} />
-              <button className="nc-icon-btn">
-                <IMore size={15} />
-              </button>
+              <div ref={moreRef} style={{ position: "relative" }}>
+                <button
+                  className="nc-icon-btn"
+                  onClick={() => setMoreMenuOpen((v) => !v)}
+                  aria-label="Más opciones"
+                >
+                  <IMore size={15} />
+                </button>
+                {moreMenuOpen && active && (
+                  <div
+                    role="menu"
+                    style={{
+                      position: "absolute",
+                      top: "calc(100% + 6px)",
+                      right: 0,
+                      minWidth: 200,
+                      background: "var(--nc-surface)",
+                      border: "1px solid var(--nc-line)",
+                      borderRadius: "var(--r-md)",
+                      boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
+                      padding: 4,
+                      zIndex: 30,
+                    }}
+                  >
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setMoreMenuOpen(false);
+                        if (active) deleteChannel(active.id);
+                      }}
+                      style={{ ...menuItemStyle, color: "var(--nc-danger)" }}
+                    >
+                      Eliminar conversación
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
 
             <div
