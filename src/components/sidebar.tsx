@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import {
   IHome, IKanban, IList, ICal, IChat, IUsers, IUser, IClip, IChart, ISettings, ILog,
 } from "./icons";
@@ -35,6 +38,18 @@ export function Sidebar({
   active?: SidebarKey;
   compact?: boolean;
 }) {
+  const [chatUnread, setChatUnread] = useState(0);
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("nc_chat_unread");
+      if (stored) setChatUnread(Number(stored));
+    } catch {}
+    const handler = (e: Event) => setChatUnread((e as CustomEvent<number>).detail);
+    window.addEventListener("nc_chat_unread", handler);
+    return () => window.removeEventListener("nc_chat_unread", handler);
+  }, []);
+
   return (
     <aside
       style={{
@@ -95,6 +110,20 @@ export function Sidebar({
             >
               <span style={{ position: "relative", display: "inline-flex" }}>
                 <it.Ic size={15} />
+                {it.k === "chat" && chatUnread > 0 && (
+                  <span
+                    style={{
+                      position: "absolute",
+                      top: -3,
+                      right: -5,
+                      width: 8,
+                      height: 8,
+                      borderRadius: "50%",
+                      background: "var(--nc-green)",
+                      border: "1.5px solid var(--nc-surface)",
+                    }}
+                  />
+                )}
                 {it.badge && compact && (
                   <span
                     style={{

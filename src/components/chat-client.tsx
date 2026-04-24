@@ -145,6 +145,13 @@ export function ChatClient({
     return () => window.removeEventListener("mousedown", onDown);
   }, []);
 
+  // Sincroniza el conteo de no-leídos con el sidebar global.
+  useEffect(() => {
+    const count = unread.size;
+    try { localStorage.setItem("nc_chat_unread", String(count)); } catch {}
+    window.dispatchEvent(new CustomEvent("nc_chat_unread", { detail: count }));
+  }, [unread]);
+
   // Mantiene refs sincronizados con el estado actual para uso en el polling.
   useEffect(() => {
     channelIdsRef.current = new Set(channelList.map((c) => c.id));
