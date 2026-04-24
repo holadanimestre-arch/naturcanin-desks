@@ -342,15 +342,25 @@ export function ChatClient({
     const body = text.trim();
     if (!body || activeId == null || sending) return;
     setSending(true);
-    const { error } = await supabase
+    setText("");
+    const { data: inserted, error } = await supabase
       .from("chat_messages")
-      .insert({ channel_id: activeId, user_id: me.id, text: body });
+      .insert({ channel_id: activeId, user_id: me.id, text: body })
+      .select()
+      .single();
     setSending(false);
     if (error) {
+      setText(body);
       alert("Error al enviar: " + error.message);
       return;
     }
-    setText("");
+    // Añade el mensaje inmediatamente usando el ID real del servidor.
+    // El evento realtime lo ignorará (deduplicación por ID).
+    if (inserted) {
+      const m = inserted as Message;
+      setMessages((prev) => (prev.some((x) => x.id === m.id) ? prev : [...prev, m]));
+      setLastMsgs((prev) => ({ ...prev, [activeId]: { text: body, user_id: me.id } }));
+    }
   }
 
   async function openOrCreateDm(other: TeamPick) {
