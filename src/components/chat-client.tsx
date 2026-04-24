@@ -170,40 +170,51 @@ export function ChatClient({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Convierte raw channel data en Channel y lo añade al estado si es nuevo.
+  // Convierte IDs de canal en objetos Channel y los añade al estado.
+  // Usa 3 queries simples en vez de un embed anidado para evitar
+  // dependencias del schema cache de PostgREST.
   async function ingestNewChannelIds(ids: number[]) {
     const fresh = ids.filter((id) => !channelIdsRef.current.has(id));
     if (fresh.length === 0) return;
 
-    // Marcamos los IDs como "conocidos" antes del fetch para evitar que el
-    // próximo tick del polling vuelva a entrar en bucle si el fetch falla o
-    // devuelve vacío. Si el fetch acaba bien, setChannelList también actualiza
-    // la ref vía el useEffect de sincronización; si falla, al menos dejamos de
-    // spammear peticiones idénticas cada 5s.
+    // Pre-marcamos para evitar que el próximo tick del polling entre en bucle.
     for (const id of fresh) channelIdsRef.current.add(id);
 
-    const { data: chData, error } = await supabase
+    // 1. Canales
+    const { data: chData, error: chErr } = await supabase
       .from("chat_channels")
-      .select("id, name, description, is_dm, dm_key, chat_channel_members(user_id, profiles(name))")
+      .select("id, name, description, is_dm, dm_key")
       .in("id", fresh);
 
-    if (error) {
-      console.error("[chat] ingestNewChannelIds error:", error.message, error.details, error.hint);
-      // Revertimos la ref para reintentar en el próximo poll — quizá es transitorio.
+    if (chErr || !chData || chData.length === 0) {
+      console.warn("[chat] ingestNewChannelIds: channels fetch failed", chErr?.message, "ids:", fresh);
       for (const id of fresh) channelIdsRef.current.delete(id);
       return;
     }
 
-    if (!chData || chData.length === 0) {
-      console.warn("[chat] ingestNewChannelIds: empty data for ids", fresh);
-      return;
-    }
+    // 2. Miembros de esos canales
+    const { data: membersData } = await supabase
+      .from("chat_channel_members")
+      .select("channel_id, user_id")
+      .in("channel_id", fresh);
+
+    // 3. Perfiles de los miembros
+    const userIds = [...new Set((membersData ?? []).map((m: any) => m.user_id as string))];
+    const { data: profilesData } = await supabase
+      .from("profiles")
+      .select("id, name")
+      .in("id", userIds);
+
+    const profileMap = new Map<string, string>(
+      (profilesData ?? []).map((p: any) => [p.id, p.name ?? "—"])
+    );
 
     const newChs: Channel[] = (chData as any[]).map((ch) => {
-      const members: MemberLite[] = (ch.chat_channel_members ?? []).map((mem: any) => {
-        const prof = Array.isArray(mem.profiles) ? mem.profiles[0] : mem.profiles;
-        return { id: mem.user_id, name: prof?.name ?? "—" };
-      });
+      const chMembers = (membersData ?? []).filter((m: any) => m.channel_id === ch.id);
+      const members: MemberLite[] = chMembers.map((m: any) => ({
+        id: m.user_id,
+        name: profileMap.get(m.user_id) ?? "—",
+      }));
       const isDm = Boolean(ch.is_dm);
       return {
         id: ch.id,
