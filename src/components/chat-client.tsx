@@ -86,11 +86,12 @@ export function ChatClient({
   const [authorCache, setAuthorCache] = useState<Record<string, string>>({ [me.id]: me.name });
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  // Último mensaje por canal (para preview en sidebar) y no-leídos
-  const [lastMsgs, setLastMsgs] = useState<Record<number, { text: string; user_id: string | null }>>(() => {
-    const init: Record<number, { text: string; user_id: string | null }> = {};
+  // Último mensaje por canal (para preview en sidebar) y no-leídos.
+  // created_at es imprescindible para que el polling detecte si ha llegado algo nuevo.
+  const [lastMsgs, setLastMsgs] = useState<Record<number, { text: string; user_id: string | null; created_at: string }>>(() => {
+    const init: Record<number, { text: string; user_id: string | null; created_at: string }> = {};
     for (const c of channels) {
-      if (c.lastMsg) init[c.id] = { text: c.lastMsg.text, user_id: c.lastMsg.user_id };
+      if (c.lastMsg) init[c.id] = { text: c.lastMsg.text, user_id: c.lastMsg.user_id, created_at: c.lastMsg.created_at };
     }
     return init;
   });
@@ -100,7 +101,7 @@ export function ChatClient({
   const channelIdsRef = useRef<Set<number>>(new Set(channels.map((c) => c.id)));
   // Refs para evitar stale closures en el polling (activeId y lastMsgs cambian con el tiempo).
   const activeIdRef = useRef<number | null>(channels[0]?.id ?? null);
-  const lastMsgsRef = useRef<Record<number, { text: string; user_id: string | null }>>({});
+  const lastMsgsRef = useRef<Record<number, { text: string; user_id: string | null; created_at: string }>>({});
 
   const [plusMenuOpen, setPlusMenuOpen] = useState(false);
   const plusRef = useRef<HTMLDivElement>(null);
@@ -287,9 +288,9 @@ export function ChatClient({
         let changed = false;
         const next = { ...prev };
         latestByChannel.forEach((m, cid) => {
-          const existing = prev[cid] as any;
+          const existing = prev[cid];
           if (!existing || m.created_at > existing.created_at) {
-            next[cid] = { text: m.text, user_id: m.user_id };
+            next[cid] = { text: m.text, user_id: m.user_id, created_at: m.created_at };
             changed = true;
           }
         });
@@ -299,11 +300,37 @@ export function ChatClient({
       latestByChannel.forEach((m, cid) => {
         if (cid === activeIdRef.current) return;
         if (m.user_id === me.id) return;
-        const existing = lastMsgsRef.current[cid] as any;
+        const existing = lastMsgsRef.current[cid];
         if (!existing || m.created_at > existing.created_at) {
           setUnread((prev) => new Set([...prev, cid]));
         }
       });
+
+      // Fallback: traer mensajes nuevos del canal activo por si realtime no los entrega.
+      const polledActiveId = activeIdRef.current;
+      if (polledActiveId != null) {
+        const { data: activeMsgs } = await supabase
+          .from("chat_messages")
+          .select("id, channel_id, user_id, text, created_at")
+          .eq("channel_id", polledActiveId)
+          .order("created_at", { ascending: false })
+          .limit(50);
+
+        if (!cancelled && activeMsgs && activeMsgs.length > 0) {
+          const sorted = (activeMsgs as Message[]).slice().reverse();
+          setMessages((prev) => {
+            const merged = [...prev];
+            let added = false;
+            for (const m of sorted) {
+              if (!merged.some((x) => x.id === m.id)) {
+                merged.push(m);
+                added = true;
+              }
+            }
+            return added ? merged : prev;
+          });
+        }
+      }
     };
 
     poll();
@@ -349,14 +376,19 @@ export function ChatClient({
       .channel(`chat-${activeId}`)
       .on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "chat_messages", filter: `channel_id=eq.${activeId}` },
+        { event: "INSERT", schema: "public", table: "chat_messages" },
         async (payload) => {
           const m = payload.new as Message;
+          // Filtro client-side: ignorar mensajes de otros canales
+          if (Number(m.channel_id) !== activeId) return;
           setMessages((prev) => (prev.some((x) => x.id === m.id) ? prev : [...prev, m]));
           if (m.user_id) fillAuthors([m.user_id]);
         }
       )
-      .subscribe();
+      .subscribe((status, err) => {
+        if (err) console.warn(`[chat] chat-${activeId} error:`, err);
+        else console.log(`[chat] chat-${activeId} status:`, status);
+      });
 
     return () => {
       ignore = true;
@@ -390,7 +422,7 @@ export function ChatClient({
     if (inserted) {
       const m = inserted as Message;
       setMessages((prev) => (prev.some((x) => x.id === m.id) ? prev : [...prev, m]));
-      setLastMsgs((prev) => ({ ...prev, [activeId]: { text: body, user_id: me.id } }));
+      setLastMsgs((prev) => ({ ...prev, [activeId]: { text: body, user_id: me.id, created_at: m.created_at } }));
     }
   }
 
