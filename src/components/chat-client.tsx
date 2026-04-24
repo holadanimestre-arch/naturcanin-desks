@@ -152,10 +152,12 @@ export function ChatClient({
         { event: "INSERT", schema: "public", table: "chat_messages" },
         (payload) => {
           const m = payload.new as Message;
-          if (channelIdsRef.current.has(m.channel_id)) {
-            setLastMsgs((prev) => ({ ...prev, [m.channel_id]: { text: m.text, user_id: m.user_id } }));
-            if (m.channel_id !== activeId) {
-              setUnread((prev) => new Set([...prev, m.channel_id]));
+          // Supabase realtime puede enviar bigint como string — normalizamos a number.
+          const channelId = Number(m.channel_id);
+          if (channelIdsRef.current.has(channelId)) {
+            setLastMsgs((prev) => ({ ...prev, [channelId]: { text: m.text, user_id: m.user_id } }));
+            if (channelId !== activeId) {
+              setUnread((prev) => new Set([...prev, channelId]));
             }
           }
         }
@@ -235,7 +237,7 @@ export function ChatClient({
           filter: `user_id=eq.${me.id}`,
         },
         (payload) => {
-          const channelId = (payload.new as any).channel_id as number;
+          const channelId = Number((payload.new as any).channel_id);
           console.log("[chat] new membership via realtime:", channelId);
           ingestNewChannelIds([channelId]);
         }
