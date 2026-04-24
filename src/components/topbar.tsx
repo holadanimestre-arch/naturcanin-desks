@@ -3,8 +3,6 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { peopleById } from "@/lib/data";
-import type { PersonId } from "@/lib/data";
 import { Avatar } from "./primitives";
 import { IPlus, ISearch } from "./icons";
 import { NotificationsBell } from "./notifications-bell";
@@ -15,23 +13,48 @@ type TopBarProps = {
   subtitle?: string;
   searchPlaceholder?: string;
   actions?: React.ReactNode;
-  me?: PersonId;
   showAdd?: boolean;
 };
+
+type MeProfile = { id: string; name: string; role: string };
 
 export function TopBar({
   title,
   subtitle,
   searchPlaceholder = "Buscar tareas, personas…",
   actions,
-  me = "lau",
   showAdd = true,
 }: TopBarProps) {
-  const p = peopleById[me];
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  const [me, setMe] = useState<MeProfile | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user || cancelled) return;
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("name, role")
+        .eq("id", user.id)
+        .single();
+      if (cancelled) return;
+      const name =
+        (profile?.name as string | undefined) ??
+        (user.user_metadata?.name as string | undefined) ??
+        user.email?.split("@")[0] ??
+        "—";
+      const role = (profile?.role as string | undefined) ?? "usuario";
+      setMe({ id: user.id, name, role });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     function onDown(e: MouseEvent) {
@@ -121,10 +144,14 @@ export function TopBar({
             borderLeftColor: "var(--nc-line)",
           }}
         >
-          <Avatar id={me} size="lg" />
+          {me ? (
+            <Avatar id={me.id} name={me.name} size="lg" />
+          ) : (
+            <span className="nc-avatar c1 lg">··</span>
+          )}
           <div style={{ fontSize: 11.5, lineHeight: 1.2, textAlign: "left" }}>
-            <div style={{ fontWeight: 600, color: "var(--nc-ink)" }}>{p?.name}</div>
-            <div style={{ color: "var(--nc-mute)", fontSize: 10 }}>{p?.role}</div>
+            <div style={{ fontWeight: 600, color: "var(--nc-ink)" }}>{me?.name ?? "…"}</div>
+            <div style={{ color: "var(--nc-mute)", fontSize: 10 }}>{me?.role ?? ""}</div>
           </div>
         </button>
 
