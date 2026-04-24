@@ -98,6 +98,9 @@ export function ChatClient({
 
   // Ref con los IDs actuales de canales: lo usa el polling sin necesitar re-suscribirse.
   const channelIdsRef = useRef<Set<number>>(new Set(channels.map((c) => c.id)));
+  // Refs para evitar stale closures en el polling (activeId y lastMsgs cambian con el tiempo).
+  const activeIdRef = useRef<number | null>(channels[0]?.id ?? null);
+  const lastMsgsRef = useRef<Record<number, { text: string; user_id: string | null }>>({});
 
   const [plusMenuOpen, setPlusMenuOpen] = useState(false);
   const plusRef = useRef<HTMLDivElement>(null);
@@ -137,38 +140,12 @@ export function ChatClient({
     return () => window.removeEventListener("mousedown", onDown);
   }, []);
 
-  // Mantiene channelIdsRef sincronizado con el estado actual.
+  // Mantiene refs sincronizados con el estado actual para uso en el polling.
   useEffect(() => {
     channelIdsRef.current = new Set(channelList.map((c) => c.id));
   }, [channelList]);
-
-  // Suscripción a mensajes en canales conocidos para actualizar previews y no-leídos.
-  // Usa channelIdsRef.current para evitar stale closures cuando se ingieren canales nuevos.
-  useEffect(() => {
-    const sub = supabase
-      .channel("unread-tracker")
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "chat_messages" },
-        (payload) => {
-          const m = payload.new as Message;
-          // Supabase realtime puede enviar bigint como string — normalizamos a number.
-          const channelId = Number(m.channel_id);
-          if (channelIdsRef.current.has(channelId)) {
-            setLastMsgs((prev) => ({ ...prev, [channelId]: { text: m.text, user_id: m.user_id } }));
-            if (channelId !== activeId) {
-              setUnread((prev) => new Set([...prev, channelId]));
-            }
-          }
-        }
-      )
-      .subscribe((status) => {
-        console.log("[chat] unread-tracker status:", status);
-      });
-
-    return () => { supabase.removeChannel(sub); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  useEffect(() => { activeIdRef.current = activeId; }, [activeId]);
+  useEffect(() => { lastMsgsRef.current = lastMsgs; }, [lastMsgs]);
 
   // Convierte IDs de canal en objetos Channel y los añade al estado.
   // Usa 3 queries simples en vez de un embed anidado para evitar
@@ -284,6 +261,49 @@ export function ChatClient({
         console.log("[chat] poll found new channels:", newcomers);
       }
       await ingestNewChannelIds(serverIds);
+      if (cancelled) return;
+
+      // Actualiza previews y no-leídos para todos los canales conocidos.
+      // Reemplaza al unread-tracker de realtime, que no es fiable sin filtro.
+      const allKnownIds = [...channelIdsRef.current];
+      if (allKnownIds.length === 0) return;
+
+      const { data: recentMsgs } = await supabase
+        .from("chat_messages")
+        .select("channel_id, text, user_id, created_at")
+        .in("channel_id", allKnownIds)
+        .order("created_at", { ascending: false })
+        .limit(allKnownIds.length * 2);
+
+      if (cancelled || !recentMsgs) return;
+
+      const latestByChannel = new Map<number, { text: string; user_id: string | null; created_at: string }>();
+      for (const m of recentMsgs as any[]) {
+        const cid = Number(m.channel_id);
+        if (!latestByChannel.has(cid)) latestByChannel.set(cid, m);
+      }
+
+      setLastMsgs((prev) => {
+        let changed = false;
+        const next = { ...prev };
+        latestByChannel.forEach((m, cid) => {
+          const existing = prev[cid] as any;
+          if (!existing || m.created_at > existing.created_at) {
+            next[cid] = { text: m.text, user_id: m.user_id };
+            changed = true;
+          }
+        });
+        return changed ? next : prev;
+      });
+
+      latestByChannel.forEach((m, cid) => {
+        if (cid === activeIdRef.current) return;
+        if (m.user_id === me.id) return;
+        const existing = lastMsgsRef.current[cid] as any;
+        if (!existing || m.created_at > existing.created_at) {
+          setUnread((prev) => new Set([...prev, cid]));
+        }
+      });
     };
 
     poll();
