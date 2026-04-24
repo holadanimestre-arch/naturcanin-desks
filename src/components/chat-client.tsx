@@ -98,6 +98,11 @@ export function ChatClient({
   });
   const [unread, setUnread] = useState<Set<number>>(new Set());
 
+  // IDs de canales que tienen mensajes nuevos pero aún no están en channelList.
+  // Se rellenan cuando llega un mensaje de canal desconocido y se consumen
+  // cuando el servidor nos envía el canal actualizado tras router.refresh().
+  const pendingUnreadRef = useRef<Set<number>>(new Set());
+
   const [plusMenuOpen, setPlusMenuOpen] = useState(false);
   const plusRef = useRef<HTMLDivElement>(null);
 
@@ -136,9 +141,40 @@ export function ChatClient({
     return () => window.removeEventListener("mousedown", onDown);
   }, []);
 
-  // Suscripción global: detecta mensajes nuevos en todos mis canales.
-  // Si llega un mensaje de un canal desconocido, lo cargamos (RLS solo
-  // deja pasar mensajes de canales donde el usuario es miembro).
+  // Cuando el servidor envía channels actualizados (tras router.refresh()),
+  // mergeamos los nuevos canales al estado y aplicamos los unreads pendientes.
+  useEffect(() => {
+    setChannelList((prev) => {
+      const newOnes = channels.filter((c) => !prev.some((p) => p.id === c.id));
+      if (newOnes.length === 0) return prev;
+
+      setLastMsgs((lm) => {
+        const next = { ...lm };
+        for (const c of newOnes) {
+          if (c.lastMsg && !next[c.id]) {
+            next[c.id] = { text: c.lastMsg.text, user_id: c.lastMsg.user_id };
+          }
+        }
+        return next;
+      });
+      setUnread((u) => {
+        const next = new Set(u);
+        for (const c of newOnes) {
+          if (pendingUnreadRef.current.has(c.id)) {
+            next.add(c.id);
+            pendingUnreadRef.current.delete(c.id);
+          }
+        }
+        return next;
+      });
+
+      return [...prev, ...newOnes];
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [channels]);
+
+  // Suscripción global a chat_messages: detecta mensajes en canales conocidos
+  // y, si el canal es desconocido, pide refresh al servidor para obtenerlo.
   useEffect(() => {
     const myChannelIds = channelList.map((c) => c.id);
 
@@ -147,45 +183,19 @@ export function ChatClient({
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "chat_messages" },
-        async (payload) => {
+        (payload) => {
           const m = payload.new as Message;
 
           if (myChannelIds.includes(m.channel_id)) {
-            // Canal conocido: actualizar preview y marcar no leído
             setLastMsgs((prev) => ({ ...prev, [m.channel_id]: { text: m.text, user_id: m.user_id } }));
             if (m.channel_id !== activeId) {
               setUnread((prev) => new Set([...prev, m.channel_id]));
             }
           } else {
-            // Canal desconocido: si somos miembros (RLS lo permite), lo añadimos al sidebar
-            const { data: ch } = await supabase
-              .from("chat_channels")
-              .select("id, name, description, is_dm, dm_key, chat_channel_members(user_id, profiles(name))")
-              .eq("id", m.channel_id)
-              .maybeSingle();
-
-            if (!ch) return; // RLS lo bloqueó → no somos miembros
-
-            const members = ((ch as any).chat_channel_members ?? []).map((mem: any) => {
-              const prof = Array.isArray(mem.profiles) ? mem.profiles[0] : mem.profiles;
-              return { id: mem.user_id, name: prof?.name ?? "—" };
-            });
-            const isDm = Boolean((ch as any).is_dm);
-            const dm_other = isDm ? members.find((mem: any) => mem.id !== me.id) : undefined;
-            const newChannel: Channel = {
-              id: (ch as any).id,
-              name: (ch as any).name,
-              description: (ch as any).description,
-              is_dm: isDm,
-              members,
-              dm_other,
-            };
-
-            setChannelList((prev) =>
-              prev.some((c) => c.id === newChannel.id) ? prev : [...prev, newChannel]
-            );
-            setLastMsgs((prev) => ({ ...prev, [m.channel_id]: { text: m.text, user_id: m.user_id } }));
-            setUnread((prev) => new Set([...prev, m.channel_id]));
+            // Canal desconocido: guardamos el ID como pendiente y pedimos
+            // al servidor la lista actualizada de canales.
+            pendingUnreadRef.current.add(m.channel_id);
+            router.refresh();
           }
         }
       )
@@ -194,59 +204,6 @@ export function ChatClient({
     return () => { supabase.removeChannel(sub); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [channelList.length]);
-
-  // Cuando otro usuario nos añade a un DM, llega un INSERT en chat_channel_members.
-  // Lo detectamos y cargamos el canal para que aparezca sin recargar la página.
-  useEffect(() => {
-    const sub = supabase
-      .channel("new-membership-tracker")
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "chat_channel_members",
-          filter: `user_id=eq.${me.id}`,
-        },
-        async (payload) => {
-          const channelId = (payload.new as { channel_id: number }).channel_id;
-          // Si ya lo tenemos en lista, ignorar
-          setChannelList((prev) => {
-            if (prev.some((c) => c.id === channelId)) return prev;
-            // Carga asíncrona fuera del setter
-            return prev;
-          });
-          // Fetch detalles del canal
-          const { data: ch } = await supabase
-            .from("chat_channels")
-            .select("id, name, description, is_dm, dm_key, chat_channel_members(user_id, profiles(name))")
-            .eq("id", channelId)
-            .single();
-          if (!ch) return;
-          const members = ((ch as any).chat_channel_members ?? []).map((m: any) => {
-            const prof = Array.isArray(m.profiles) ? m.profiles[0] : m.profiles;
-            return { id: m.user_id, name: prof?.name ?? "—" };
-          });
-          const isDm = Boolean((ch as any).is_dm);
-          const dm_other = isDm ? members.find((m: any) => m.id !== me.id) : undefined;
-          const newChannel: Channel = {
-            id: (ch as any).id,
-            name: (ch as any).name,
-            description: (ch as any).description,
-            is_dm: isDm,
-            members,
-            dm_other,
-          };
-          setChannelList((prev) =>
-            prev.some((c) => c.id === newChannel.id) ? prev : [...prev, newChannel]
-          );
-        }
-      )
-      .subscribe();
-
-    return () => { supabase.removeChannel(sub); };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   async function fillAuthors(userIds: string[]) {
     const missing = userIds.filter((id) => id && !authorCache[id]);
