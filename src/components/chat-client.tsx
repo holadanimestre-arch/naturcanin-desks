@@ -282,8 +282,9 @@ export function ChatClient({
       return;
     }
 
-    // Crear nuevo DM
-    const displayName = `dm:${key.slice(0, 12)}`;
+    // Crear nuevo DM. Usamos la key completa (UUIDs ordenados) como name
+    // para que no colisione con el índice único de chat_channels.name.
+    const displayName = `dm:${key}`;
     const { data: created, error: createErr } = await supabase
       .from("chat_channels")
       .insert({ name: displayName, description: null, is_dm: true, dm_key: key, created_by: me.id })
