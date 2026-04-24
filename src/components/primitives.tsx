@@ -80,18 +80,13 @@ export function State({ s }: { s: TaskState }) {
 export function LogoLg() {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-      <div
-        style={{
-          width: 44, height: 44, borderRadius: 12,
-          background: "var(--nc-green)",
-          color: "white",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          fontFamily: "var(--ff-hand)", fontSize: 30, fontWeight: 700,
-          paddingTop: 4, lineHeight: 1,
-        }}
-      >
-        n
-      </div>
+      <img
+        src="/logo.svg"
+        alt="Naturcanin"
+        width={44}
+        height={44}
+        style={{ display: "block" }}
+      />
       <div>
         <div style={{ fontSize: 18, fontWeight: 700, letterSpacing: "-0.02em" }}>Naturcanin</div>
         <div

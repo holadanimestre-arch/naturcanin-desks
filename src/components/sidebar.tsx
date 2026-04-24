@@ -54,7 +54,13 @@ export function Sidebar({
         }}
       >
         <div className="nc-logo">
-          <div className="mark">n</div>
+          <img
+            src="/logo.svg"
+            alt="Naturcanin"
+            width={22}
+            height={22}
+            style={{ display: "block" }}
+          />
           {!compact && <>Naturcanin</>}
         </div>
       </div>
