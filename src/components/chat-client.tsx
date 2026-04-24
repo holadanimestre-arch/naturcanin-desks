@@ -318,9 +318,7 @@ export function ChatClient({
     setDmBusy(true);
     setDmError(null);
 
-    const key = dmKey(me.id, other.id);
-
-    // ¿Ya existe?
+    // ¿Ya existe en el estado local?
     const existing = channelList.find((c) => c.is_dm && c.members.some((m) => m.id === other.id));
     if (existing) {
       setActiveId(existing.id);
@@ -329,79 +327,44 @@ export function ChatClient({
       return;
     }
 
-    const { data: found } = await supabase
+    // Función SECURITY DEFINER: crea el canal + ambos miembros atómicamente,
+    // sin depender de RLS para el INSERT de la otra persona.
+    const { data: rpcData, error: rpcErr } = await supabase.rpc("create_or_find_dm", {
+      p_other_user_id: other.id,
+    });
+
+    if (rpcErr || !rpcData?.[0]) {
+      setDmError(rpcErr?.message ?? "No se pudo crear el DM");
+      setDmBusy(false);
+      return;
+    }
+
+    const channelId: number = rpcData[0].channel_id;
+
+    // Fetch del canal con miembros para construir el objeto local
+    const { data: ch } = await supabase
       .from("chat_channels")
-      .select("id, name, description, is_dm, dm_key")
-      .eq("dm_key", key)
+      .select("id, name, description, is_dm, dm_key, chat_channel_members(user_id, profiles(name))")
+      .eq("id", channelId)
       .maybeSingle();
 
-    if (found) {
-      // Me aseguro de ser miembro (upsert para no fallar si ya existe)
-      await supabase
-        .from("chat_channel_members")
-        .upsert(
-          [
-            { channel_id: found.id, user_id: me.id },
-            { channel_id: found.id, user_id: other.id },
-          ],
-          { onConflict: "channel_id,user_id", ignoreDuplicates: true }
-        );
-      const asChannel: Channel = {
-        id: found.id,
-        name: found.name,
-        description: found.description,
-        is_dm: true,
-        members: [
-          { id: me.id, name: me.name },
-          { id: other.id, name: other.name },
-        ],
-        dm_other: { id: other.id, name: other.name },
-      };
-      setChannelList((prev) => (prev.some((c) => c.id === asChannel.id) ? prev : [...prev, asChannel]));
-      setActiveId(asChannel.id);
-      setDmModalOpen(false);
-      setDmBusy(false);
-      return;
-    }
-
-    // Crear nuevo DM. Usamos la key completa (UUIDs ordenados) como name
-    // para que no colisione con el índice único de chat_channels.name.
-    const displayName = `dm:${key}`;
-    const { data: created, error: createErr } = await supabase
-      .from("chat_channels")
-      .insert({ name: displayName, description: null, is_dm: true, dm_key: key, created_by: me.id })
-      .select("id")
-      .single();
-
-    if (createErr || !created) {
-      setDmError(createErr?.message ?? "No se pudo crear el DM");
-      setDmBusy(false);
-      return;
-    }
-
-    const { error: memErr } = await supabase.from("chat_channel_members").insert([
-      { channel_id: created.id, user_id: me.id },
-      { channel_id: created.id, user_id: other.id },
-    ]);
-
-    if (memErr) {
-      setDmError(memErr.message);
-      setDmBusy(false);
-      return;
-    }
+    const members: MemberLite[] = ch
+      ? ((ch as any).chat_channel_members ?? []).map((mem: any) => {
+          const prof = Array.isArray(mem.profiles) ? mem.profiles[0] : mem.profiles;
+          return { id: mem.user_id, name: prof?.name ?? "—" };
+        })
+      : [{ id: me.id, name: me.name }, { id: other.id, name: other.name }];
 
     const asChannel: Channel = {
-      id: created.id,
-      name: displayName,
-      description: null,
+      id: channelId,
+      name: ch ? (ch as any).name : `dm:${dmKey(me.id, other.id)}`,
+      description: ch ? (ch as any).description : null,
       is_dm: true,
-      members: [
-        { id: me.id, name: me.name },
-        { id: other.id, name: other.name },
-      ],
+      members,
       dm_other: { id: other.id, name: other.name },
     };
-    setChannelList((prev) => [...prev, asChannel]);
+
+    setChannelList((prev) => (prev.some((c) => c.id === asChannel.id) ? prev : [...prev, asChannel]));
     setActiveId(asChannel.id);
     setDmModalOpen(false);
     setDmBusy(false);
