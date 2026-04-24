@@ -173,12 +173,29 @@ export function ChatClient({
     const fresh = ids.filter((id) => !channelIdsRef.current.has(id));
     if (fresh.length === 0) return;
 
-    const { data: chData } = await supabase
+    // Marcamos los IDs como "conocidos" antes del fetch para evitar que el
+    // próximo tick del polling vuelva a entrar en bucle si el fetch falla o
+    // devuelve vacío. Si el fetch acaba bien, setChannelList también actualiza
+    // la ref vía el useEffect de sincronización; si falla, al menos dejamos de
+    // spammear peticiones idénticas cada 5s.
+    for (const id of fresh) channelIdsRef.current.add(id);
+
+    const { data: chData, error } = await supabase
       .from("chat_channels")
       .select("id, name, description, is_dm, dm_key, chat_channel_members(user_id, profiles(name))")
       .in("id", fresh);
 
-    if (!chData || chData.length === 0) return;
+    if (error) {
+      console.error("[chat] ingestNewChannelIds error:", error.message, error.details, error.hint);
+      // Revertimos la ref para reintentar en el próximo poll — quizá es transitorio.
+      for (const id of fresh) channelIdsRef.current.delete(id);
+      return;
+    }
+
+    if (!chData || chData.length === 0) {
+      console.warn("[chat] ingestNewChannelIds: empty data for ids", fresh);
+      return;
+    }
 
     const newChs: Channel[] = (chData as any[]).map((ch) => {
       const members: MemberLite[] = (ch.chat_channel_members ?? []).map((mem: any) => {
