@@ -6,7 +6,7 @@ import { BoardListView } from "@/components/board-list-view";
 import { BoardCalendarView } from "@/components/board-calendar-view";
 import { BoardPeopleView } from "@/components/board-people-view";
 import { BoardFilters } from "@/components/board-filters";
-import { IChev } from "@/components/icons";
+import { BoardGrouping, type GroupKey } from "@/components/board-grouping";
 import { getTasks } from "@/lib/supabase/queries";
 import { getTeam } from "@/lib/supabase/team";
 import { tags as TAG_META } from "@/lib/data";
@@ -32,6 +32,12 @@ function str(v: string | string[] | undefined): string | undefined {
   return s && s !== "all" ? s : undefined;
 }
 
+function parseGroup(v: string | string[] | undefined): GroupKey {
+  const s = Array.isArray(v) ? v[0] : v;
+  if (s === "prio" || s === "tag" || s === "person") return s;
+  return "state";
+}
+
 function buildQS(params: Record<string, string | undefined>) {
   const u = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) if (v) u.set(k, v);
@@ -45,6 +51,7 @@ export default async function BoardPage({
   searchParams: Promise<{
     view?: string; y?: string; m?: string;
     person?: string; tag?: string; prio?: string; state?: string;
+    group?: string;
   }>;
 }) {
   const sp = await searchParams;
@@ -53,6 +60,7 @@ export default async function BoardPage({
   const tagF = str(sp.tag);
   const prioF = str(sp.prio);
   const stateF = str(sp.state);
+  const group = parseGroup(sp.group);
 
   const [allTasks, team] = await Promise.all([getTasks(), getTeam()]);
 
@@ -146,16 +154,24 @@ export default async function BoardPage({
           {view === "tablero" && (
             <>
               <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--nc-mute)" }}>
-                <span>Arrastra las tarjetas entre columnas</span>
+                <span>
+                  {group === "state"
+                    ? "Arrastra las tarjetas entre columnas"
+                    : "Agrupación de solo lectura"}
+                </span>
               </div>
-              <button className="nc-btn ghost" style={{ padding: "4px 8px", fontSize: 11.5, color: "var(--nc-ink)" }}>
-                Agrupar: Estado <IChev dir="down" />
-              </button>
+              <BoardGrouping value={group} />
             </>
           )}
         </div>
 
-        {view === "tablero" && <KanbanBoard initialTasks={tasks} />}
+        {view === "tablero" && (
+          <KanbanBoard
+            initialTasks={tasks}
+            groupBy={group}
+            team={team.map((m) => ({ id: m.id, name: m.name }))}
+          />
+        )}
         {view === "lista" && <BoardListView tasks={tasks} />}
         {view === "calendario" && <BoardCalendarView tasks={tasks} year={year} month={month} />}
         {view === "personas" && <BoardPeopleView tasks={tasks} />}
