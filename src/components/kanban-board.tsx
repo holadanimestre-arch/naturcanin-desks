@@ -98,15 +98,7 @@ export function KanbanBoard({
     setOverCol(null);
   }
 
-  function handleDrop(e: React.DragEvent, colKey: string) {
-    if (!dragEnabled) return;
-    e.preventDefault();
-    const id = draggingId ?? Number(e.dataTransfer.getData("text/plain"));
-    setDraggingId(null);
-    setOverCol(null);
-    if (!id) return;
-
-    const state = colKey as TaskState;
+  function moveToState(id: number, state: TaskState) {
     const task = tasks.find((t) => t.id === id);
     if (!task || task.state === state) return;
 
@@ -121,6 +113,16 @@ export function KanbanBoard({
         router.refresh();
       }
     });
+  }
+
+  function handleDrop(e: React.DragEvent, colKey: string) {
+    if (!dragEnabled) return;
+    e.preventDefault();
+    const id = draggingId ?? Number(e.dataTransfer.getData("text/plain"));
+    setDraggingId(null);
+    setOverCol(null);
+    if (!id) return;
+    moveToState(id, colKey as TaskState);
   }
 
   return (
@@ -208,7 +210,10 @@ export function KanbanBoard({
                       transition: "opacity 0.1s",
                     }}
                   >
-                    <TaskCard t={t} />
+                    <TaskCard
+                      t={t}
+                      onMove={dragEnabled ? (s) => moveToState(t.id, s) : undefined}
+                    />
                   </div>
                 ))
               )}

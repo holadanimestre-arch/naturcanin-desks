@@ -1,9 +1,18 @@
 import Link from "next/link";
-import type { Task } from "@/lib/data";
+import type { Task, TaskState } from "@/lib/data";
 import { AvStack, Due, Priority, Tag } from "./primitives";
 import { ICheck, IClip, IMsg } from "./icons";
+import { TaskStateMenu } from "./task-state-menu";
 
-export function TaskCard({ t, compact }: { t: Task; compact?: boolean }) {
+export function TaskCard({
+  t,
+  compact,
+  onMove,
+}: {
+  t: Task;
+  compact?: boolean;
+  onMove?: (s: TaskState) => void;
+}) {
   return (
     <Link
       href={`/tareas/${t.id}`}
@@ -25,6 +34,7 @@ export function TaskCard({ t, compact }: { t: Task; compact?: boolean }) {
         <Priority level={t.prio} />
         <div style={{ flex: 1 }} />
         {t.due && <Due text={t.due} overdue={t.due === "Hoy" && t.state !== "done"} />}
+        {onMove && <TaskStateMenu currentState={t.state} onMove={onMove} />}
       </div>
       <div
         style={{
