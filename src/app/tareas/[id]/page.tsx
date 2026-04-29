@@ -5,6 +5,7 @@ import { Avatar, Priority, State, Tag } from "@/components/primitives";
 import { FileUpload } from "@/components/file-upload";
 import { CommentBox } from "@/components/comment-box";
 import { DeleteTaskBtn } from "@/components/delete-task-btn";
+import { EditTaskBtn } from "@/components/edit-task-btn";
 import { SubtasksPanel } from "@/components/subtasks-panel";
 import { ICheck, IChev, IEye, ILock } from "@/components/icons";
 import {
@@ -12,6 +13,7 @@ import {
   getTaskSubtasks,
   type ActivityEntry,
 } from "@/lib/supabase/queries";
+import { getTeam } from "@/lib/supabase/team";
 
 function timeAgo(ts: string): string {
   const diff = Date.now() - new Date(ts).getTime();
@@ -34,14 +36,17 @@ export default async function TaskDetailPage({
 }) {
   const { id } = await params;
   const taskId = Number(id);
-  const [t, comments, files, activity, subtasks] = await Promise.all([
+  const [t, comments, files, activity, subtasks, team] = await Promise.all([
     getTask(taskId),
     getTaskComments(taskId),
     getTaskFiles(taskId),
     getTaskActivity(taskId),
     getTaskSubtasks(taskId),
+    getTeam(),
   ]);
   if (!t) return notFound();
+
+  const teamPicks = team.map((m) => ({ id: m.id, name: m.name, department: m.department }));
 
   // Generar URLs firmadas para cada archivo
   const filesWithUrls = await Promise.all(
@@ -78,6 +83,18 @@ export default async function TaskDetailPage({
           <button className="nc-btn primary" style={{ fontSize: 11.5 }}>
             <ICheck size={12} /> Archivar
           </button>
+          <EditTaskBtn
+            taskId={taskId}
+            team={teamPicks}
+            initial={{
+              title: t.title,
+              description: t.desc ?? "",
+              priority: t.prio,
+              tag: t.tag,
+              due_date: t.dueDate ?? "",
+              assignee_ids: t.assignee,
+            }}
+          />
           <DeleteTaskBtn taskId={taskId} title={t.title} />
         </div>
 
