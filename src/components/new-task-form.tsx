@@ -128,6 +128,7 @@ export function NewTaskForm({
       <div style={{ position: "fixed", inset: 0, background: "rgba(28,31,26,0.35)", zIndex: 40 }} />
 
       <div
+        className="nc-modal-shell"
         style={{
           position: "fixed", inset: 0,
           display: "flex", alignItems: "center", justifyContent: "center",

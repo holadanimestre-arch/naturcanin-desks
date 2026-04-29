@@ -180,6 +180,7 @@ export function UserRowActions({
       {/* Modal: Editar usuario */}
       {editOpen && (
         <div
+          className="nc-modal-shell"
           style={{
             position: "fixed", inset: 0,
             background: "rgba(28,31,26,0.4)", zIndex: 50,
@@ -302,6 +303,7 @@ export function UserRowActions({
       {/* Modal: Confirmar eliminación */}
       {confirmDel && (
         <div
+          className="nc-modal-shell"
           style={{
             position: "fixed", inset: 0,
             background: "rgba(28,31,26,0.4)", zIndex: 50,

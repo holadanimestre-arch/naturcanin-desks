@@ -296,6 +296,12 @@ input, textarea, select { font-family: inherit; }
   /* Kanban: columnas mantienen ancho mínimo y la fila scrollea */
   .nc-kanban-col { min-width: 240px; }
 
-  /* Modales: asegura que no queden pegados al borde */
+  /* Modales: scroll y padding mínimo en móvil */
+  .nc-modal-shell {
+    padding: 10px !important;
+    align-items: flex-start !important;
+    overflow-y: auto !important;
+  }
+
   body { -webkit-tap-highlight-color: transparent; }
 }

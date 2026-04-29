@@ -115,6 +115,7 @@ export function EditTaskBtn({
 
       {open && (
         <div
+          className="nc-modal-shell"
           style={{
             position: "fixed", inset: 0,
             background: "rgba(28,31,26,0.4)",
