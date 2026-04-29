@@ -59,6 +59,7 @@ export default async function UsersPage() {
           showAdd={false}
         />
         <div
+          className="nc-grid-stack-mobile"
           style={{
             flex: 1, overflow: "auto", padding: 18, background: "var(--nc-bg)",
             display: "grid", gridTemplateColumns: "1fr 340px", gap: 14,
@@ -66,6 +67,7 @@ export default async function UsersPage() {
         >
           {/* LEFT: user list */}
           <div
+            className="nc-table-scroll"
             style={{
               background: "var(--nc-surface)",
               border: "1px solid var(--nc-line)",

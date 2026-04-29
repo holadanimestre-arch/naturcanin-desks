@@ -43,7 +43,7 @@ export default async function MyTasksPage() {
         <div style={{ flex: 1, overflow: "auto", padding: 18, background: "var(--nc-bg)" }}>
 
           {/* KPIs */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10, marginBottom: 18 }}>
+          <div className="nc-grid-stack-mobile" style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10, marginBottom: 18 }}>
             {kpis.map((k) => (
               <div
                 key={k.l}

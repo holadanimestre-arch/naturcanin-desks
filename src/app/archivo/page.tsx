@@ -132,6 +132,7 @@ export default async function ArchivePage({
             </div>
           ) : (
             <div
+              className="nc-table-scroll"
               style={{
                 background: "var(--nc-surface)",
                 border: "1px solid var(--nc-line)",

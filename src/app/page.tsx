@@ -36,7 +36,7 @@ export default async function HomePage() {
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
         <TopBar title="Inicio" subtitle="Naturcanin Tasks" />
         <div style={{ flex: 1, overflow: "auto", padding: 18, background: "var(--nc-bg)" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr", gap: 14 }}>
+          <div className="nc-grid-stack-mobile" style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr", gap: 14 }}>
             {/* LEFT */}
             <div>
               <div

@@ -40,7 +40,7 @@ export default async function StatsPage() {
         <div style={{ flex: 1, overflow: "auto", padding: 18, background: "var(--nc-bg)" }}>
 
           {/* KPIs */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 14 }}>
+          <div className="nc-grid-2col-mobile" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 14 }}>
             {kpis.map((k) => (
               <div
                 key={k.l}
@@ -62,7 +62,7 @@ export default async function StatsPage() {
           </div>
 
           {/* Bar chart + Donut */}
-          <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 12, marginBottom: 12 }}>
+          <div className="nc-grid-stack-mobile" style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 12, marginBottom: 12 }}>
             {/* Weekly bar chart */}
             <div
               style={{

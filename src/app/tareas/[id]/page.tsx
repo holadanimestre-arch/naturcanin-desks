@@ -98,7 +98,7 @@ export default async function TaskDetailPage({
           <DeleteTaskBtn taskId={taskId} title={t.title} />
         </div>
 
-        <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
+        <div className="nc-stack-mobile" style={{ flex: 1, display: "flex", minHeight: 0 }}>
           {/* Main */}
           <div style={{ flex: 1, padding: "20px 24px", overflow: "auto" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
@@ -213,6 +213,7 @@ export default async function TaskDetailPage({
 
           {/* Right rail */}
           <div
+            className="nc-rail"
             style={{
               width: 240, borderLeft: "1px solid var(--nc-line)",
               background: "var(--nc-surface)", padding: "16px",

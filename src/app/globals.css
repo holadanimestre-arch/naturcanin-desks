@@ -272,6 +272,30 @@ input, textarea, select { font-family: inherit; }
   /* TopBar: añade espacio a la izquierda para que el hamburger no tape el título */
   .nc-topbar { padding-left: 56px !important; }
 
+  /* Stack flex con rail lateral */
+  .nc-stack-mobile { flex-direction: column !important; }
+  .nc-stack-mobile > .nc-rail {
+    width: 100% !important;
+    max-width: 100% !important;
+    border-left: none !important;
+    border-top: 1px solid var(--nc-line);
+  }
+
+  /* Stack grids a 1 columna */
+  .nc-grid-stack-mobile { grid-template-columns: 1fr !important; }
+  /* 2 columnas (típico para KPIs) */
+  .nc-grid-2col-mobile { grid-template-columns: 1fr 1fr !important; }
+
+  /* Tablas con grid: scroll horizontal en móvil */
+  .nc-table-scroll {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+  .nc-table-scroll > * { min-width: 720px; }
+
+  /* Kanban: columnas mantienen ancho mínimo y la fila scrollea */
+  .nc-kanban-col { min-width: 240px; }
+
   /* Modales: asegura que no queden pegados al borde */
   body { -webkit-tap-highlight-color: transparent; }
 }

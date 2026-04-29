@@ -141,6 +141,7 @@ export function KanbanBoard({
         return (
           <div
             key={c.key}
+            className="nc-kanban-col"
             onDragOver={(e) => handleDragOver(e, c.key)}
             onDragLeave={handleDragLeave}
             onDrop={(e) => handleDrop(e, c.key)}
