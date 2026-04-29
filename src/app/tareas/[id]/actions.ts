@@ -3,6 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { logError } from "@/lib/logger";
 
 export async function recordFile(taskId: number, fileName: string, storagePath: string) {
   const supabase = await createClient();
@@ -115,8 +117,29 @@ export async function deleteTask(taskId: number) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "No autenticado" };
 
-  const { error } = await supabase.from("tasks").delete().eq("id", taskId);
-  if (error) return { error: error.message };
+  const admin = createAdminClient();
 
+  // Limpia filas dependientes antes de borrar la tarea (defensivo
+  // por si algún FK no tiene ON DELETE CASCADE).
+  await admin.from("comments").delete().eq("task_id", taskId);
+  await admin.from("files").delete().eq("task_id", taskId);
+  await admin.from("task_activity").delete().eq("task_id", taskId);
+  await admin.from("task_assignees").delete().eq("task_id", taskId);
+  await admin.from("subtasks").delete().eq("task_id", taskId);
+
+  const { error } = await admin.from("tasks").delete().eq("id", taskId);
+  if (error) {
+    await logError("Error al eliminar tarea", {
+      context: { message: error.message, taskId },
+      path: `/tareas/${taskId}`,
+      userId: user.id,
+    });
+    return { error: error.message };
+  }
+
+  revalidatePath("/tablero");
+  revalidatePath("/");
+  revalidatePath("/mis-tareas");
+  revalidatePath("/archivo");
   redirect("/tablero");
 }

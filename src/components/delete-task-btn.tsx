@@ -7,10 +7,23 @@ import { deleteTask } from "@/app/tareas/[id]/actions";
 export function DeleteTaskBtn({ taskId, title }: { taskId: number; title: string }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
 
   async function handleDelete() {
     setLoading(true);
-    await deleteTask(taskId);
+    setErr(null);
+    try {
+      const res = await deleteTask(taskId);
+      // Si el server action redirige, el componente se desmonta y no llegamos aquí.
+      // Si llegamos, devolvió { error } sin redirigir.
+      if (res && "error" in res && res.error) {
+        setErr(res.error);
+        setLoading(false);
+      }
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Error inesperado");
+      setLoading(false);
+    }
   }
 
   return (
@@ -60,6 +73,16 @@ export function DeleteTaskBtn({ taskId, title }: { taskId: number; title: string
               ¿Seguro que quieres eliminar <b style={{ color: "var(--nc-ink)" }}>"{title}"</b>?
               Esta acción no se puede deshacer.
             </p>
+            {err && (
+              <div
+                style={{
+                  fontSize: 11.5, padding: "6px 10px", borderRadius: 4, marginBottom: 12,
+                  background: "#fef2f2", color: "#dc2626",
+                }}
+              >
+                {err}
+              </div>
+            )}
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
               <button
                 className="nc-btn ghost"
