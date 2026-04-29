@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logError } from "@/lib/logger";
+import { notifyAssigned } from "@/lib/notifications";
 
 export async function recordFile(taskId: number, fileName: string, storagePath: string) {
   const supabase = await createClient();
@@ -152,7 +153,13 @@ export async function updateTask(taskId: number, fields: UpdateFields) {
     return { error: error.message };
   }
 
-  // Reemplaza los asignados.
+  // Reemplaza los asignados, calculando primero quiénes son nuevos.
+  const { data: prevRows } = await admin
+    .from("task_assignees")
+    .select("user_id")
+    .eq("task_id", taskId);
+  const prevSet = new Set((prevRows ?? []).map((r: { user_id: string }) => r.user_id));
+
   await admin.from("task_assignees").delete().eq("task_id", taskId);
   const uniqueAssignees = Array.from(new Set(fields.assignee_ids.filter(Boolean)));
   if (uniqueAssignees.length > 0) {
@@ -167,6 +174,11 @@ export async function updateTask(taskId: number, fields: UpdateFields) {
       });
       return { error: assignErr.message };
     }
+  }
+
+  const newlyAdded = uniqueAssignees.filter((uid) => !prevSet.has(uid));
+  if (newlyAdded.length > 0) {
+    await notifyAssigned(admin, taskId, title, newlyAdded, user.id);
   }
 
   revalidatePath(`/tareas/${taskId}`);

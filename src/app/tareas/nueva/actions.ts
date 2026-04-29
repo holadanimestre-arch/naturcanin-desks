@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logError } from "@/lib/logger";
+import { notifyAssigned } from "@/lib/notifications";
 
 type CreateResult = { id: number } | { error: string };
 
@@ -50,6 +51,8 @@ export async function createTask(formData: FormData): Promise<CreateResult> {
   await admin.from("task_assignees").insert(
     finalAssignees.map((uid) => ({ task_id: task.id, user_id: uid }))
   );
+
+  await notifyAssigned(admin, Number(task.id), title, finalAssignees, user.id);
 
   if (subtaskTexts.length > 0) {
     await admin.from("subtasks").insert(
