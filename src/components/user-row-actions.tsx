@@ -240,6 +240,30 @@ export function UserRowActions({
               />
 
               <FieldLabel>Departamentos</FieldLabel>
+              {editDepts.some((d) => !DEPARTMENTS.includes(d)) && (
+                <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 8 }}>
+                  {editDepts.filter((d) => !DEPARTMENTS.includes(d)).map((d) => (
+                    <button
+                      key={d}
+                      type="button"
+                      onClick={() => toggleDept(d)}
+                      disabled={pending}
+                      title="Departamento no estándar — pulsa para quitarlo"
+                      style={{
+                        display: "inline-flex", alignItems: "center", gap: 4,
+                        padding: "4px 8px 4px 10px", borderRadius: 999, fontSize: 11,
+                        border: "1px solid #fca5a5",
+                        background: "#fef2f2",
+                        color: "#b91c1c",
+                        fontWeight: 500,
+                        cursor: pending ? "not-allowed" : "pointer",
+                      }}
+                    >
+                      {d} <IX size={10} />
+                    </button>
+                  ))}
+                </div>
+              )}
               <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 16 }}>
                 {DEPARTMENTS.map((d) => {
                   const sel = editDepts.includes(d);
