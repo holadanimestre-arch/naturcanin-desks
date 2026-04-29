@@ -12,16 +12,12 @@ export function DeleteTaskBtn({ taskId, title }: { taskId: number; title: string
   async function handleDelete() {
     setLoading(true);
     setErr(null);
-    try {
-      const res = await deleteTask(taskId);
-      // Si el server action redirige, el componente se desmonta y no llegamos aquí.
-      // Si llegamos, devolvió { error } sin redirigir.
-      if (res && "error" in res && res.error) {
-        setErr(res.error);
-        setLoading(false);
-      }
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "Error inesperado");
+    // No envolvemos en try/catch: redirect() lanza NEXT_REDIRECT y Next.js
+    // lo necesita para hacer la navegación. Si la acción falla devuelve
+    // { error } sin lanzar.
+    const res = await deleteTask(taskId);
+    if (res && "error" in res && res.error) {
+      setErr(res.error);
       setLoading(false);
     }
   }
