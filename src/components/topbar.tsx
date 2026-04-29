@@ -82,6 +82,7 @@ export function TopBar({
 
   return (
     <div
+      className="nc-topbar"
       style={{
         display: "flex",
         alignItems: "center",
@@ -96,7 +97,8 @@ export function TopBar({
         <div style={{ fontSize: 14, fontWeight: 600, color: "var(--nc-ink)" }}>{title}</div>
         {subtitle && <div style={{ fontSize: 11, color: "var(--nc-mute)" }}>{subtitle}</div>}
       </div>
-      <div style={{ flex: 1, maxWidth: 280, marginLeft: "auto" }}>
+      <div style={{ flex: 1 }} />
+      <div className="nc-hide-mobile" style={{ width: 280, maxWidth: "100%" }}>
         <div style={{ position: "relative" }}>
           <div
             style={{
@@ -119,9 +121,19 @@ export function TopBar({
       {actions}
       <NotificationsBell />
       {showAdd && (
-        <Link href="/tareas/nueva" className="nc-btn primary">
-          <IPlus /> Nueva tarea
-        </Link>
+        <>
+          <Link href="/tareas/nueva" className="nc-btn primary nc-hide-mobile">
+            <IPlus /> Nueva tarea
+          </Link>
+          <Link
+            href="/tareas/nueva"
+            className="nc-btn primary nc-show-mobile"
+            aria-label="Nueva tarea"
+            style={{ padding: "7px 9px" }}
+          >
+            <IPlus />
+          </Link>
+        </>
       )}
       <div ref={menuRef} style={{ position: "relative" }}>
         <button
@@ -149,7 +161,7 @@ export function TopBar({
           ) : (
             <span className="nc-avatar c1 lg">··</span>
           )}
-          <div style={{ fontSize: 11.5, lineHeight: 1.2, textAlign: "left" }}>
+          <div className="nc-hide-mobile" style={{ fontSize: 11.5, lineHeight: 1.2, textAlign: "left" }}>
             <div style={{ fontWeight: 600, color: "var(--nc-ink)" }}>{me?.name ?? "…"}</div>
             <div style={{ color: "var(--nc-mute)", fontSize: 10 }}>{me?.role ?? ""}</div>
           </div>

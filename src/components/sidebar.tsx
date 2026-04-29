@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
-  IHome, IKanban, IList, ICal, IChat, IUsers, IUser, IClip, IChart, ISettings, ILog,
+  IHome, IKanban, IList, ICal, IChat, IUsers, IUser, IClip, IChart, ISettings, ILog, IMenu,
 } from "./icons";
 import type { SVGProps } from "react";
 
@@ -38,7 +39,9 @@ export function Sidebar({
   active?: SidebarKey;
   compact?: boolean;
 }) {
+  const pathname = usePathname();
   const [chatUnread, setChatUnread] = useState(0);
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   useEffect(() => {
     try {
@@ -50,17 +53,36 @@ export function Sidebar({
     return () => window.removeEventListener("nc_chat_unread", handler);
   }, []);
 
+  // Cierra el drawer al cambiar de ruta.
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [pathname]);
+
   return (
-    <aside
-      style={{
-        width: compact ? 56 : 200,
-        background: "var(--nc-surface)",
-        borderRight: "1px solid var(--nc-line)",
-        display: "flex",
-        flexDirection: "column",
-        flexShrink: 0,
-      }}
-    >
+    <>
+      <button
+        type="button"
+        className="nc-mobile-menu-btn"
+        aria-label="Abrir menú"
+        onClick={() => setMobileOpen(true)}
+      >
+        <IMenu size={18} />
+      </button>
+      <div
+        className={`nc-mobile-backdrop ${mobileOpen ? "open" : ""}`}
+        onClick={() => setMobileOpen(false)}
+      />
+      <aside
+        className={`nc-sidebar ${mobileOpen ? "open" : ""}`}
+        style={{
+          width: compact ? 56 : 200,
+          background: "var(--nc-surface)",
+          borderRight: "1px solid var(--nc-line)",
+          display: "flex",
+          flexDirection: "column",
+          flexShrink: 0,
+        }}
+      >
       <div
         style={{
           padding: compact ? "14px 0" : "14px 16px",
@@ -190,6 +212,7 @@ export function Sidebar({
           {!compact && "Ajustes"}
         </button>
       </div>
-    </aside>
+      </aside>
+    </>
   );
 }
