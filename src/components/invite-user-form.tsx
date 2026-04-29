@@ -4,8 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { IPlus } from "./icons";
 import { inviteUser, createUserWithPassword } from "@/app/usuarios/actions";
-
-const DEPARTMENTS = ["Fabricación", "Logística", "Comercial", "Administrativo", "Calidad", "Marketing", "Compras", "Gerencia"];
+import { DEPARTMENTS } from "@/lib/departments";
 
 type Mode = "invite" | "password";
 
@@ -28,7 +27,7 @@ export function InviteUserForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPwd, setShowPwd] = useState(true);
-  const [department, setDepartment] = useState("Fabricación");
+  const [departments, setDepartments] = useState<string[]>(["Fabricación"]);
   const [role, setRole] = useState<"usuario" | "admin">("usuario");
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
@@ -51,7 +50,7 @@ export function InviteUserForm() {
     const fd = new FormData();
     fd.set("name", name);
     fd.set("email", email);
-    fd.set("department", department);
+    for (const d of departments) fd.append("departments", d);
     fd.set("role", role);
 
     if (mode === "invite") {
@@ -196,15 +195,19 @@ export function InviteUserForm() {
           </>
         )}
 
-        <Label>Departamento</Label>
+        <Label>Departamentos</Label>
         <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 14 }}>
           {DEPARTMENTS.map((d) => {
-            const sel = d === department;
+            const sel = departments.includes(d);
             return (
               <button
                 key={d}
                 type="button"
-                onClick={() => setDepartment(d)}
+                onClick={() =>
+                  setDepartments((prev) =>
+                    prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d]
+                  )
+                }
                 style={{
                   padding: "4px 10px", borderRadius: 999, fontSize: 11,
                   border: "1px solid " + (sel ? "var(--nc-green)" : "var(--nc-line)"),

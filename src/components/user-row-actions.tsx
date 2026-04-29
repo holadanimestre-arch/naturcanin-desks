@@ -4,18 +4,21 @@ import { useState, useTransition, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { IMore, IX } from "./icons";
 import { changeUserRole, deleteUser, updateUserProfile } from "@/app/usuarios/actions";
+import { DEPARTMENTS } from "@/lib/departments";
 
 export function UserRowActions({
   userId,
   userName,
   userEmail,
   currentRole,
+  currentDepartments,
   isSelf,
 }: {
   userId: string;
   userName: string;
   userEmail: string;
   currentRole: "admin" | "usuario";
+  currentDepartments: string[];
   isSelf: boolean;
 }) {
   const router = useRouter();
@@ -29,6 +32,7 @@ export function UserRowActions({
   const [editName, setEditName] = useState(userName);
   const [editEmail, setEditEmail] = useState(userEmail);
   const [editPwd, setEditPwd] = useState("");
+  const [editDepts, setEditDepts] = useState<string[]>(currentDepartments);
   const [editMsg, setEditMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
 
   function openMenu() {
@@ -58,10 +62,21 @@ export function UserRowActions({
     });
   }
 
+  function deptsEqual(a: string[], b: string[]): boolean {
+    if (a.length !== b.length) return false;
+    const sa = [...a].sort();
+    const sb = [...b].sort();
+    return sa.every((v, i) => v === sb[i]);
+  }
+
+  function toggleDept(d: string) {
+    setEditDepts((prev) => (prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d]));
+  }
+
   async function doEdit(e: React.FormEvent) {
     e.preventDefault();
     setEditMsg(null);
-    const fields: { name?: string; email?: string; password?: string } = {};
+    const fields: { name?: string; email?: string; password?: string; departments?: string[] } = {};
     if (editName.trim() && editName.trim() !== userName) fields.name = editName;
     if (editEmail.trim() && editEmail.trim() !== userEmail) fields.email = editEmail;
     if (editPwd.trim()) {
@@ -70,6 +85,9 @@ export function UserRowActions({
         return;
       }
       fields.password = editPwd;
+    }
+    if (!deptsEqual(editDepts, currentDepartments)) {
+      fields.departments = editDepts;
     }
     if (Object.keys(fields).length === 0) {
       setEditMsg({ kind: "err", text: "No hay cambios que guardar" });
@@ -118,7 +136,7 @@ export function UserRowActions({
             }}
           >
             <button
-              onClick={() => { closeMenu(); setEditName(userName); setEditEmail(userEmail); setEditPwd(""); setEditMsg(null); setEditOpen(true); }}
+              onClick={() => { closeMenu(); setEditName(userName); setEditEmail(userEmail); setEditPwd(""); setEditDepts(currentDepartments); setEditMsg(null); setEditOpen(true); }}
               style={{
                 display: "block", width: "100%", textAlign: "left",
                 padding: "8px 12px", fontSize: 12,
@@ -219,6 +237,31 @@ export function UserRowActions({
                 disabled={pending}
                 autoComplete="new-password"
               />
+
+              <FieldLabel>Departamentos</FieldLabel>
+              <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 16 }}>
+                {DEPARTMENTS.map((d) => {
+                  const sel = editDepts.includes(d);
+                  return (
+                    <button
+                      key={d}
+                      type="button"
+                      onClick={() => toggleDept(d)}
+                      disabled={pending}
+                      style={{
+                        padding: "4px 10px", borderRadius: 999, fontSize: 11,
+                        border: "1px solid " + (sel ? "var(--nc-green)" : "var(--nc-line)"),
+                        background: sel ? "var(--nc-green-soft)" : "var(--nc-surface)",
+                        color: sel ? "var(--nc-green-dark)" : "var(--nc-text)",
+                        fontWeight: sel ? 600 : 500,
+                        cursor: pending ? "not-allowed" : "pointer",
+                      }}
+                    >
+                      {d}
+                    </button>
+                  );
+                })}
+              </div>
 
               {editMsg && (
                 <div

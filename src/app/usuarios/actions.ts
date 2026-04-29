@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logError } from "@/lib/logger";
+import { parseDepartments, joinDepartments } from "@/lib/departments";
 
 async function requireAdmin() {
   const supabase = await createClient();
@@ -27,14 +28,14 @@ export async function inviteUser(formData: FormData) {
   const email = (formData.get("email") as string)?.trim().toLowerCase();
   const name = (formData.get("name") as string)?.trim();
   const role = (formData.get("role") as string) || "usuario";
-  const department = (formData.get("department") as string) || "";
+  const departments = formData.getAll("departments").map((v) => String(v).trim()).filter(Boolean);
 
   if (!email || !name) return { error: "Nombre y correo obligatorios" };
   if (role !== "admin" && role !== "usuario") return { error: "Rol inválido" };
 
   const admin = createAdminClient();
   const { error } = await admin.auth.admin.inviteUserByEmail(email, {
-    data: { name, role, department },
+    data: { name, role, departments, department: joinDepartments(departments) },
   });
 
   if (error) {
@@ -53,7 +54,7 @@ export async function createUserWithPassword(formData: FormData) {
   const name = (formData.get("name") as string)?.trim();
   const password = (formData.get("password") as string) ?? "";
   const role = (formData.get("role") as string) || "usuario";
-  const department = (formData.get("department") as string) || "";
+  const departments = formData.getAll("departments").map((v) => String(v).trim()).filter(Boolean);
 
   if (!email || !name) return { error: "Nombre y correo obligatorios" };
   if (password.length < 8) return { error: "La contraseña debe tener al menos 8 caracteres" };
@@ -64,7 +65,7 @@ export async function createUserWithPassword(formData: FormData) {
     email,
     password,
     email_confirm: true,
-    user_metadata: { name, role, department },
+    user_metadata: { name, role, departments, department: joinDepartments(departments) },
   });
   if (error || !data?.user) {
     await logError("Error al crear usuario con contraseña", { context: { message: error?.message, email }, path: "/usuarios" });
@@ -80,15 +81,31 @@ export async function createUserWithPassword(formData: FormData) {
 
 export async function updateUserProfile(
   userId: string,
-  fields: { name?: string; email?: string; password?: string }
+  fields: { name?: string; email?: string; password?: string; departments?: string[] }
 ) {
   const check = await requireAdmin();
   if ("error" in check) return { error: check.error };
 
   const admin = createAdminClient();
-  const authUpdate: { email?: string; password?: string } = {};
+  const authUpdate: {
+    email?: string;
+    password?: string;
+    user_metadata?: Record<string, unknown>;
+  } = {};
   if (fields.email) authUpdate.email = fields.email.trim().toLowerCase();
   if (fields.password) authUpdate.password = fields.password;
+
+  if (fields.departments) {
+    const cleaned = fields.departments.map((d) => d.trim()).filter(Boolean);
+    // Lee el resto de metadata para no perder campos existentes (name, role…).
+    const { data: current } = await admin.auth.admin.getUserById(userId);
+    const prevMeta = (current?.user?.user_metadata ?? {}) as Record<string, unknown>;
+    authUpdate.user_metadata = {
+      ...prevMeta,
+      departments: cleaned,
+      department: joinDepartments(cleaned),
+    };
+  }
 
   if (Object.keys(authUpdate).length > 0) {
     const { error } = await admin.auth.admin.updateUserById(userId, authUpdate);
@@ -104,6 +121,7 @@ export async function updateUserProfile(
   }
 
   revalidatePath("/usuarios");
+  revalidatePath("/equipo");
   return { success: true };
 }
 
@@ -142,7 +160,7 @@ export type UserListItem = {
   email: string;
   name: string;
   role: "admin" | "usuario";
-  department: string | null;
+  departments: string[];
   status: "Activo" | "Invitado";
   lastSignIn: string | null;
 };
@@ -168,7 +186,7 @@ export async function getAllUsers(): Promise<UserListItem[]> {
       email: u.email ?? "",
       name: (p?.name as string) ?? (u.user_metadata?.name as string) ?? (u.email?.split("@")[0] ?? "—"),
       role: ((p?.role as string) ?? (u.user_metadata?.role as string) ?? "usuario") as "admin" | "usuario",
-      department: (u.user_metadata?.department as string) ?? null,
+      departments: parseDepartments(u.user_metadata),
       status: u.last_sign_in_at ? "Activo" : "Invitado",
       lastSignIn: u.last_sign_in_at ?? null,
     };

@@ -1,5 +1,6 @@
 import { createClient } from "./server";
 import { createAdminClient } from "./admin";
+import { parseDepartments, joinDepartments } from "@/lib/departments";
 import type { Task, TagKey, Priority, TaskState } from "@/lib/data";
 
 export type TeamMember = {
@@ -67,7 +68,7 @@ export async function getTeam(): Promise<TeamMemberWithStats[]> {
       id: u.id,
       name: (p?.name as string) ?? (u.user_metadata?.name as string) ?? (u.email?.split("@")[0] ?? "—"),
       email: u.email ?? "",
-      department: (u.user_metadata?.department as string) ?? null,
+      department: joinDepartments(parseDepartments(u.user_metadata)) || null,
       role: ((p?.role as string) ?? "usuario") as "admin" | "usuario",
       status: u.last_sign_in_at ? "Activo" : "Invitado",
       ...stats,

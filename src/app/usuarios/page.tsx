@@ -117,7 +117,7 @@ export default async function UsersPage() {
                       )}
                     </div>
                     <div style={{ fontSize: 10.5, color: "var(--nc-mute)" }}>
-                      {u.department || "—"} · Últ. acceso {timeAgo(u.lastSignIn)}
+                      {u.departments.length > 0 ? u.departments.join(" · ") : "—"} · Últ. acceso {timeAgo(u.lastSignIn)}
                     </div>
                   </div>
                 </div>
@@ -153,6 +153,7 @@ export default async function UsersPage() {
                   userName={u.name}
                   userEmail={u.email}
                   currentRole={u.role}
+                  currentDepartments={u.departments}
                   isSelf={u.id === user.id}
                 />
               </div>

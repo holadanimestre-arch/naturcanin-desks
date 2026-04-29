@@ -1,5 +1,6 @@
 import { createClient } from "./server";
 import { createAdminClient } from "./admin";
+import { parseDepartments, joinDepartments } from "@/lib/departments";
 
 export type Stats = {
   completedLast30: number;
@@ -112,7 +113,7 @@ export async function getStats(): Promise<Stats | null> {
         userId: u.id,
         name: (p?.name as string) ?? u.email?.split("@")[0] ?? "—",
         role: ((p?.role as string) ?? "usuario") as string,
-        department: (u.user_metadata?.department as string) ?? "",
+        department: joinDepartments(parseDepartments(u.user_metadata)),
         active: wl.get(u.id) ?? 0,
       };
     })
