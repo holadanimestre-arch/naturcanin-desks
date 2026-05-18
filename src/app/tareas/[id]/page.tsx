@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Sidebar } from "@/components/sidebar";
+import { SidebarServer as Sidebar } from "@/components/sidebar-server";
 import { Avatar, Priority, State, Tag } from "@/components/primitives";
 import { FileUpload } from "@/components/file-upload";
 import { CommentBox } from "@/components/comment-box";

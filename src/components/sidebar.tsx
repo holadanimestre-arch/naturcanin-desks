@@ -19,6 +19,8 @@ type Item = {
   badge?: number;
 };
 
+const ADMIN_KEYS: SidebarKey[] = ["team", "users", "stats", "logs"];
+
 const items: Item[] = [
   { k: "home",    l: "Inicio",       href: "/",         Ic: IHome },
   { k: "board",   l: "Tablero",      href: "/tablero",  Ic: IKanban },
@@ -35,9 +37,11 @@ const items: Item[] = [
 export function Sidebar({
   active = "board",
   compact = false,
+  isAdmin = false,
 }: {
   active?: SidebarKey;
   compact?: boolean;
+  isAdmin?: boolean;
 }) {
   const pathname = usePathname();
   const [chatUnread, setChatUnread] = useState(0);
@@ -109,7 +113,7 @@ export function Sidebar({
           gap: 2,
         }}
       >
-        {items.map((it) => {
+        {items.filter((it) => isAdmin || !ADMIN_KEYS.includes(it.k)).map((it) => {
           const isActive = active === it.k;
           return (
             <Link

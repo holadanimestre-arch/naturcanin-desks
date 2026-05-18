@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Sidebar } from "@/components/sidebar";
+import { SidebarServer as Sidebar } from "@/components/sidebar-server";
 import { TopBar } from "@/components/topbar";
 import { Avatar } from "@/components/primitives";
 import { getTeam } from "@/lib/supabase/team";

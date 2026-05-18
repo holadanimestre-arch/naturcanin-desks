@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Sidebar } from "@/components/sidebar";
+import { SidebarServer as Sidebar } from "@/components/sidebar-server";
 import { TopBar } from "@/components/topbar";
 import { IChev } from "@/components/icons";
 import { getCalendarTasks, type CalendarTask } from "@/lib/supabase/queries";

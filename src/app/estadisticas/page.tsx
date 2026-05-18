@@ -1,4 +1,4 @@
-import { Sidebar } from "@/components/sidebar";
+import { SidebarServer as Sidebar } from "@/components/sidebar-server";
 import { TopBar } from "@/components/topbar";
 import { Avatar } from "@/components/primitives";
 import { getStats } from "@/lib/supabase/stats";

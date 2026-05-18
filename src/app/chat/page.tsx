@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { redirect } from "next/navigation";
 import { Sidebar } from "@/components/sidebar";
+
 import { ChatClient } from "@/components/chat-client";
 import { createClient } from "@/lib/supabase/server";
 import { getTeam } from "@/lib/supabase/team";
@@ -13,7 +14,7 @@ export default async function ChatPage() {
 
   // Round 1 – en paralelo: perfil, memberships del usuario y equipo
   const [profileRes, myMembershipsRes, team] = await Promise.all([
-    supabase.from("profiles").select("name").eq("id", user.id).single(),
+    supabase.from("profiles").select("name, role").eq("id", user.id).single(),
     supabase
       .from("chat_channel_members")
       .select("channel_id")
@@ -43,6 +44,7 @@ export default async function ChatPage() {
   const me = {
     id: user.id,
     name: profileRes.data?.name ?? user.email?.split("@")[0] ?? "Tú",
+    isAdmin: profileRes.data?.role === "admin",
   };
 
   type MemberLite = { id: string; name: string };
@@ -123,7 +125,7 @@ export default async function ChatPage() {
 
   return (
     <div className="nc-app-shell">
-      <Sidebar active="chat" compact />
+      <Sidebar active="chat" compact isAdmin={me.isAdmin} />
       <ChatClient me={me} channels={channels} team={teamPicks} />
     </div>
   );

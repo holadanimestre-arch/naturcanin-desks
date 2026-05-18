@@ -73,7 +73,7 @@ export function ChatClient({
   channels,
   team,
 }: {
-  me: { id: string; name: string };
+  me: { id: string; name: string; isAdmin: boolean };
   channels: Channel[];
   team: TeamPick[];
 }) {
@@ -640,21 +640,23 @@ export function ChatClient({
                 >
                   Mensaje directo
                 </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    setPlusMenuOpen(false);
-                    setChannelError(null);
-                    setNewName("");
-                    setNewDesc("");
-                    setNewMembers([]);
-                    setChannelModalOpen(true);
-                  }}
-                  style={menuItemStyle}
-                >
-                  Nuevo canal
-                </button>
+                {me.isAdmin && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setPlusMenuOpen(false);
+                      setChannelError(null);
+                      setNewName("");
+                      setNewDesc("");
+                      setNewMembers([]);
+                      setChannelModalOpen(true);
+                    }}
+                    style={menuItemStyle}
+                  >
+                    Nuevo canal
+                  </button>
+                )}
               </div>
             )}
           </div>

@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { Sidebar } from "@/components/sidebar";
+import { SidebarServer as Sidebar } from "@/components/sidebar-server";
 import { TopBar } from "@/components/topbar";
 import { NewTaskForm } from "@/components/new-task-form";
 import { createClient } from "@/lib/supabase/server";

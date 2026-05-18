@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Sidebar } from "@/components/sidebar";
+import { SidebarServer as Sidebar } from "@/components/sidebar-server";
 import { TopBar } from "@/components/topbar";
 import { Avatar, AvStack, Due, Priority, Tag } from "@/components/primitives";
 import { IBell, IChev } from "@/components/icons";
