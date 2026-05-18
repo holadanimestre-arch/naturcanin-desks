@@ -14,7 +14,7 @@ export default async function DocumentosPage() {
   const [docsRes, sharesRes, team] = await Promise.all([
     supabase
       .from("documents")
-      .select("id, name, size, mime_type, storage_path, created_at, owner_id")
+      .select("id, name, size, mime_type, storage_path, created_at, owner_id, folder")
       .order("created_at", { ascending: false }),
     supabase
       .from("document_shares")
@@ -30,6 +30,7 @@ export default async function DocumentosPage() {
     storage_path: string;
     created_at: string;
     owner_id: string;
+    folder: string | null;
   }[];
 
   const shares = (sharesRes.data ?? []) as {

@@ -13,6 +13,7 @@ type Doc = {
   storage_path: string;
   created_at: string;
   owner_id: string;
+  folder: string | null;
 };
 
 type Share = { document_id: string; shared_with_user_id: string };
@@ -66,6 +67,12 @@ export function DocumentsClient({
   const [search, setSearch] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Carpetas
+  const [activeFolder, setActiveFolder] = useState<string | null>(null); // null = todos
+  const [newFolderOpen, setNewFolderOpen] = useState(false);
+  const [newFolderName, setNewFolderName] = useState("");
+
+  // Compartir
   const [shareModalDoc, setShareModalDoc] = useState<Doc | null>(null);
   const [shareQuery, setShareQuery] = useState("");
   const [shareBusy, setShareBusy] = useState(false);
@@ -73,8 +80,24 @@ export function DocumentsClient({
   const myDocs = docs.filter((d) => d.owner_id === me.id);
   const sharedWithMe = docs.filter((d) => d.owner_id !== me.id);
 
-  const filtered = (list: Doc[]) =>
-    list.filter((d) => d.name.toLowerCase().includes(search.toLowerCase()));
+  // Carpetas únicas de mis documentos
+  const folders = Array.from(
+    new Set(myDocs.map((d) => d.folder).filter(Boolean) as string[])
+  ).sort((a, b) => a.localeCompare(b, "es"));
+
+  function applyFilters(list: Doc[]) {
+    return list
+      .filter((d) => activeFolder === null || d.folder === activeFolder)
+      .filter((d) => d.name.toLowerCase().includes(search.toLowerCase()));
+  }
+
+  function createFolder() {
+    const name = newFolderName.trim();
+    if (!name) return;
+    setActiveFolder(name);
+    setNewFolderName("");
+    setNewFolderOpen(false);
+  }
 
   async function handleUpload(files: FileList | null) {
     if (!files || files.length === 0) return;
@@ -104,6 +127,7 @@ export function DocumentsClient({
           size: file.size,
           mime_type: file.type || null,
           storage_path: path,
+          folder: activeFolder,
         })
         .select()
         .single();
@@ -175,93 +199,155 @@ export function DocumentsClient({
 
   const filteredShareCandidates = team
     .filter((t) => t.id !== me.id)
-    .filter((t) => {
-      const q = shareQuery.trim().toLowerCase();
-      return !q || t.name.toLowerCase().includes(q);
-    });
+    .filter((t) => !shareQuery.trim() || t.name.toLowerCase().includes(shareQuery.toLowerCase()));
 
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, background: "var(--nc-bg)" }}>
-      {/* Header */}
-      <div
-        style={{
+    <div style={{ flex: 1, display: "flex", minWidth: 0, background: "var(--nc-bg)" }}>
+
+      {/* Panel izquierdo: carpetas */}
+      <div style={{
+        width: 200, flexShrink: 0,
+        background: "var(--nc-surface)",
+        borderRight: "1px solid var(--nc-line)",
+        display: "flex", flexDirection: "column",
+      }}>
+        <div style={{ padding: "14px 14px 8px", fontSize: 11, fontWeight: 700, color: "var(--nc-mute)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+          Carpetas
+        </div>
+
+        <nav style={{ flex: 1, overflow: "auto", padding: "0 8px" }}>
+          {/* Todos */}
+          <FolderItem
+            label="Todos los archivos"
+            count={myDocs.length}
+            active={activeFolder === null}
+            onClick={() => setActiveFolder(null)}
+          />
+
+          {folders.map((f) => (
+            <FolderItem
+              key={f}
+              label={f}
+              count={myDocs.filter((d) => d.folder === f).length}
+              active={activeFolder === f}
+              onClick={() => setActiveFolder(f)}
+            />
+          ))}
+
+          {sharedWithMe.length > 0 && (
+            <>
+              <div style={{ margin: "10px 6px 4px", fontSize: 10, fontWeight: 700, color: "var(--nc-mute)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                Compartidos
+              </div>
+              <FolderItem
+                label="Compartidos conmigo"
+                count={sharedWithMe.length}
+                active={activeFolder === "__shared__"}
+                onClick={() => setActiveFolder("__shared__")}
+              />
+            </>
+          )}
+        </nav>
+
+        {/* Nueva carpeta */}
+        <div style={{ padding: "8px", borderTop: "1px solid var(--nc-line)" }}>
+          {newFolderOpen ? (
+            <div style={{ display: "flex", gap: 4 }}>
+              <input
+                autoFocus
+                value={newFolderName}
+                onChange={(e) => setNewFolderName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") createFolder();
+                  if (e.key === "Escape") setNewFolderOpen(false);
+                }}
+                placeholder="Nombre…"
+                className="nc-input"
+                style={{ flex: 1, fontSize: 12, padding: "5px 8px" }}
+              />
+              <button className="nc-icon-btn" onClick={createFolder}><ICheck size={12} /></button>
+              <button className="nc-icon-btn" onClick={() => setNewFolderOpen(false)}><IX size={12} /></button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setNewFolderOpen(true)}
+              style={{
+                display: "flex", alignItems: "center", gap: 6,
+                width: "100%", padding: "6px 8px",
+                fontSize: 12, color: "var(--nc-mute)",
+                background: "transparent", borderRadius: "var(--r-sm)",
+                cursor: "pointer",
+              }}
+            >
+              <IPlus size={12} /> Nueva carpeta
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Área principal */}
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
+        {/* Header */}
+        <div style={{
           padding: "12px 18px",
           borderBottom: "1px solid var(--nc-line)",
           background: "var(--nc-surface)",
           display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
-        }}
-      >
-        <div>
-          <div style={{ fontSize: 14, fontWeight: 700 }}>Documentos</div>
-          <div style={{ fontSize: 11, color: "var(--nc-mute)" }}>
-            {myDocs.length} archivo{myDocs.length !== 1 ? "s" : ""} propios
-            {sharedWithMe.length > 0 && ` · ${sharedWithMe.length} compartido${sharedWithMe.length !== 1 ? "s" : ""} contigo`}
+        }}>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 700 }}>
+              {activeFolder === null ? "Documentos" : activeFolder === "__shared__" ? "Compartidos conmigo" : activeFolder}
+            </div>
+            <div style={{ fontSize: 11, color: "var(--nc-mute)" }}>
+              {myDocs.length} archivo{myDocs.length !== 1 ? "s" : ""} propios
+              {sharedWithMe.length > 0 && ` · ${sharedWithMe.length} compartido${sharedWithMe.length !== 1 ? "s" : ""} contigo`}
+            </div>
           </div>
-        </div>
-        <div style={{ flex: 1 }} />
-        <div
-          style={{
+          <div style={{ flex: 1 }} />
+          <div style={{
             display: "flex", alignItems: "center", gap: 6,
             background: "var(--nc-line-2)", padding: "6px 10px",
             borderRadius: "var(--r-sm)", fontSize: 12,
-          }}
-        >
-          <ISearch size={12} style={{ color: "var(--nc-mute)" }} />
+          }}>
+            <ISearch size={12} style={{ color: "var(--nc-mute)" }} />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar…"
+              style={{ border: "none", background: "transparent", outline: "none", fontSize: 12, width: 140 }}
+            />
+          </div>
           <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar…"
-            style={{ border: "none", background: "transparent", outline: "none", fontSize: 12, width: 160 }}
+            ref={fileInputRef}
+            type="file"
+            multiple
+            style={{ display: "none" }}
+            onChange={(e) => handleUpload(e.target.files)}
+            accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.jpg,.jpeg,.png,.webp,.gif"
           />
+          {activeFolder !== "__shared__" && (
+            <button
+              className="nc-btn primary"
+              style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 6 }}
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+            >
+              <IPlus size={12} />
+              {uploading ? "Subiendo…" : "Subir archivo"}
+            </button>
+          )}
         </div>
-        <input
-          ref={fileInputRef}
-          type="file"
-          multiple
-          style={{ display: "none" }}
-          onChange={(e) => handleUpload(e.target.files)}
-          accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.jpg,.jpeg,.png,.webp,.gif"
-        />
-        <button
-          className="nc-btn primary"
-          style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 6 }}
-          onClick={() => fileInputRef.current?.click()}
-          disabled={uploading}
-        >
-          <IPlus size={12} />
-          {uploading ? "Subiendo…" : "Subir archivo"}
-        </button>
-      </div>
 
-      {uploadError && (
-        <div style={{ padding: "8px 18px", background: "var(--nc-danger-soft)", color: "var(--nc-danger)", fontSize: 12 }}>
-          {uploadError}
-        </div>
-      )}
+        {uploadError && (
+          <div style={{ padding: "8px 18px", background: "#fff5f5", color: "var(--nc-danger)", fontSize: 12 }}>
+            {uploadError}
+          </div>
+        )}
 
-      <div style={{ flex: 1, overflow: "auto", padding: 18 }}>
-        {/* Mis documentos */}
-        <Section title="Mis documentos" empty={filtered(myDocs).length === 0} emptyText="Aún no has subido ningún archivo.">
-          <DocGrid>
-            {filtered(myDocs).map((doc) => (
-              <DocCard
-                key={doc.id}
-                doc={doc}
-                sharees={docSharees(doc)}
-                team={team}
-                isOwner
-                onDownload={() => handleDownload(doc)}
-                onDelete={() => handleDelete(doc)}
-                onShare={() => { setShareModalDoc(doc); setShareQuery(""); }}
-              />
-            ))}
-          </DocGrid>
-        </Section>
-
-        {sharedWithMe.length > 0 && (
-          <Section title="Compartidos conmigo" empty={filtered(sharedWithMe).length === 0} emptyText="Sin resultados.">
+        <div style={{ flex: 1, overflow: "auto", padding: 18 }}>
+          {activeFolder === "__shared__" ? (
             <DocGrid>
-              {filtered(sharedWithMe).map((doc) => (
+              {applyFilters(sharedWithMe).map((doc) => (
                 <DocCard
                   key={doc.id}
                   doc={doc}
@@ -274,17 +360,37 @@ export function DocumentsClient({
                 />
               ))}
             </DocGrid>
-          </Section>
-        )}
+          ) : (
+            <>
+              {applyFilters(myDocs).length === 0 ? (
+                <div style={{ fontSize: 12, color: "var(--nc-mute)", paddingTop: 24 }}>
+                  {search ? "Sin resultados." : activeFolder ? `La carpeta "${activeFolder}" está vacía. Sube un archivo para empezar.` : "Aún no has subido ningún archivo."}
+                </div>
+              ) : (
+                <DocGrid>
+                  {applyFilters(myDocs).map((doc) => (
+                    <DocCard
+                      key={doc.id}
+                      doc={doc}
+                      sharees={docSharees(doc)}
+                      team={team}
+                      isOwner
+                      onDownload={() => handleDownload(doc)}
+                      onDelete={() => handleDelete(doc)}
+                      onShare={() => { setShareModalDoc(doc); setShareQuery(""); }}
+                    />
+                  ))}
+                </DocGrid>
+              )}
+            </>
+          )}
+        </div>
       </div>
 
-      {/* Share modal */}
+      {/* Modal compartir */}
       {shareModalDoc && (
         <>
-          <div
-            onClick={() => setShareModalDoc(null)}
-            style={{ position: "fixed", inset: 0, background: "rgba(28,31,26,0.35)", zIndex: 40 }}
-          />
+          <div onClick={() => setShareModalDoc(null)} style={{ position: "fixed", inset: 0, background: "rgba(28,31,26,0.35)", zIndex: 40 }} />
           <div style={{ position: "fixed", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: 24, zIndex: 41 }}>
             <div style={{ width: "100%", maxWidth: 420, background: "var(--nc-surface)", borderRadius: "var(--r-lg)", boxShadow: "0 20px 60px rgba(0,0,0,0.25)", overflow: "hidden" }}>
               <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--nc-line)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -347,79 +453,66 @@ export function DocumentsClient({
   );
 }
 
-function Section({ title, children, empty, emptyText }: { title: string; children: React.ReactNode; empty: boolean; emptyText: string }) {
+function FolderItem({ label, count, active, onClick }: { label: string; count: number; active: boolean; onClick: () => void }) {
   return (
-    <div style={{ marginBottom: 28 }}>
-      <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--nc-mute)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>
-        {title}
-      </div>
-      {empty ? (
-        <div style={{ fontSize: 12, color: "var(--nc-mute)", padding: "20px 0" }}>{emptyText}</div>
-      ) : children}
-    </div>
+    <button
+      onClick={onClick}
+      style={{
+        display: "flex", alignItems: "center", gap: 8,
+        width: "100%", padding: "7px 8px",
+        borderRadius: "var(--r-sm)", fontSize: 12.5,
+        fontWeight: active ? 600 : 500,
+        color: active ? "var(--nc-green-dark)" : "var(--nc-text)",
+        background: active ? "var(--nc-green-soft)" : "transparent",
+        cursor: "pointer", textAlign: "left",
+      }}
+    >
+      <IFolder size={13} style={{ flexShrink: 0, color: active ? "var(--nc-green)" : "var(--nc-mute)" }} />
+      <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</span>
+      <span style={{ fontSize: 10.5, color: "var(--nc-mute)", flexShrink: 0 }}>{count}</span>
+    </button>
   );
 }
 
 function DocGrid({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 12 }}>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(190px, 1fr))", gap: 12 }}>
       {children}
     </div>
   );
 }
 
-function DocCard({
-  doc, sharees, team, isOwner, onDownload, onDelete, onShare,
-}: {
-  doc: Doc;
-  sharees: string[];
-  team: TeamPick[];
-  isOwner: boolean;
-  onDownload: () => void;
-  onDelete: () => void;
-  onShare: () => void;
+function DocCard({ doc, sharees, team, isOwner, onDownload, onDelete, onShare }: {
+  doc: Doc; sharees: string[]; team: TeamPick[]; isOwner: boolean;
+  onDownload: () => void; onDelete: () => void; onShare: () => void;
 }) {
   const { label, color } = fileLabel(doc.mime_type);
   const teamById = new Map(team.map((t) => [t.id, t.name]));
 
   return (
-    <div
-      style={{
-        background: "var(--nc-surface)",
-        border: "1px solid var(--nc-line)",
-        borderRadius: "var(--r-md)",
-        overflow: "hidden",
-        display: "flex", flexDirection: "column",
-      }}
-    >
-      {/* Preview area */}
-      <div
-        style={{
-          height: 80, background: "var(--nc-line-2)",
+    <div style={{
+      background: "var(--nc-surface)",
+      border: "1px solid var(--nc-line)",
+      borderRadius: "var(--r-md)",
+      overflow: "hidden",
+      display: "flex", flexDirection: "column",
+    }}>
+      <div style={{ height: 76, background: "var(--nc-line-2)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{
+          width: 42, height: 50,
+          background: color + "22",
+          border: `1.5px solid ${color}44`,
+          borderRadius: 6,
           display: "flex", alignItems: "center", justifyContent: "center",
-        }}
-      >
-        <div
-          style={{
-            width: 44, height: 52,
-            background: color + "22",
-            border: `1.5px solid ${color}44`,
-            borderRadius: 6,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            flexDirection: "column", gap: 4,
-          }}
-        >
-          <IFolder size={18} style={{ color }} />
-          <span style={{ fontSize: 8, fontWeight: 800, color, letterSpacing: "0.04em" }}>{label}</span>
+          flexDirection: "column", gap: 3,
+        }}>
+          <IFolder size={17} style={{ color }} />
+          <span style={{ fontSize: 7.5, fontWeight: 800, color, letterSpacing: "0.04em" }}>{label}</span>
         </div>
       </div>
 
-      {/* Info */}
       <div style={{ padding: "10px 12px", flex: 1 }}>
-        <div
-          title={doc.name}
-          style={{ fontSize: 12, fontWeight: 600, color: "var(--nc-ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 3 }}
-        >
+        <div title={doc.name} style={{ fontSize: 12, fontWeight: 600, color: "var(--nc-ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 3 }}>
           {doc.name}
         </div>
         <div style={{ fontSize: 10.5, color: "var(--nc-mute)" }}>
@@ -430,21 +523,12 @@ function DocCard({
             {sharees.slice(0, 4).map((uid) => (
               <Avatar key={uid} id={uid} name={teamById.get(uid) ?? "?"} size="sm" />
             ))}
-            {sharees.length > 4 && (
-              <span style={{ fontSize: 10, color: "var(--nc-mute)", alignSelf: "center" }}>+{sharees.length - 4}</span>
-            )}
+            {sharees.length > 4 && <span style={{ fontSize: 10, color: "var(--nc-mute)", alignSelf: "center" }}>+{sharees.length - 4}</span>}
           </div>
         )}
       </div>
 
-      {/* Actions */}
-      <div
-        style={{
-          borderTop: "1px solid var(--nc-line-2)",
-          padding: "6px 10px",
-          display: "flex", gap: 4, justifyContent: "flex-end",
-        }}
-      >
+      <div style={{ borderTop: "1px solid var(--nc-line-2)", padding: "6px 10px", display: "flex", gap: 4, justifyContent: "flex-end" }}>
         <button className="nc-icon-btn" title="Descargar" onClick={onDownload}><IDownload size={13} /></button>
         {isOwner && (
           <>
