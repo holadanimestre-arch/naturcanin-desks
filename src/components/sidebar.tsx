@@ -4,12 +4,12 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
-  IHome, IKanban, IList, ICal, IChat, IUsers, IUser, IClip, IChart, ISettings, ILog, IMenu,
+  IHome, IKanban, IList, ICal, IChat, IUsers, IUser, IClip, IChart, ISettings, ILog, IMenu, IFolder,
 } from "./icons";
 import type { SVGProps } from "react";
 
 export type SidebarKey =
-  | "home" | "board" | "my" | "cal" | "chat" | "team" | "users" | "archive" | "stats" | "logs";
+  | "home" | "board" | "my" | "cal" | "chat" | "team" | "users" | "archive" | "stats" | "logs" | "docs";
 
 type Item = {
   k: SidebarKey;
@@ -29,6 +29,7 @@ const items: Item[] = [
   { k: "chat",    l: "Chat",         href: "/chat",     Ic: IChat },
   { k: "team",    l: "Equipo",       href: "/equipo",   Ic: IUsers },
   { k: "users",   l: "Usuarios",     href: "/usuarios", Ic: IUser },
+  { k: "docs",    l: "Documentos",   href: "/documentos", Ic: IFolder },
   { k: "archive", l: "Archivo",      href: "/archivo",  Ic: IClip },
   { k: "stats",   l: "Estadísticas", href: "/estadisticas", Ic: IChart },
   { k: "logs",    l: "Logs",         href: "/logs",         Ic: ILog },
