@@ -17,6 +17,7 @@ type Doc = {
 };
 
 type Share = { document_id: string; shared_with_user_id: string };
+type FolderShare = { id: string; owner_id: string; folder_path: string; shared_with_user_id: string };
 type TeamPick = { id: string; name: string };
 
 const MIME_INFO: Record<string, { label: string; color: string }> = {
@@ -80,19 +81,22 @@ export function DocumentsClient({
   me,
   docs: initialDocs,
   shares: initialShares,
+  folderShares: initialFolderShares,
   team,
 }: {
   me: { id: string };
   docs: Doc[];
   shares: Share[];
+  folderShares: FolderShare[];
   team: TeamPick[];
 }) {
   const supabase = useMemo(() => createClient(), []);
   const [docs, setDocs] = useState<Doc[]>(initialDocs);
   const [shares, setShares] = useState<Share[]>(initialShares);
+  const [folderShares, setFolderShares] = useState<FolderShare[]>(initialFolderShares);
 
   // Navegación
-  const [path, setPath] = useState<string[]>([]); // [] = raíz
+  const [path, setPath] = useState<string[]>([]);
   const [view, setView] = useState<"mine" | "shared">("mine");
   const currentFolder = path.length > 0 ? path.join("/") : null;
 
@@ -107,10 +111,15 @@ export function DocumentsClient({
   const [newFolderModal, setNewFolderModal] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
 
-  // Compartir
+  // Compartir archivo
   const [shareDoc, setShareDoc] = useState<Doc | null>(null);
   const [shareQuery, setShareQuery] = useState("");
   const [shareBusy, setShareBusy] = useState(false);
+
+  // Compartir carpeta
+  const [shareFolderPath, setShareFolderPath] = useState<string | null>(null);
+  const [shareFolderQuery, setShareFolderQuery] = useState("");
+  const [shareFolderBusy, setShareFolderBusy] = useState(false);
 
   const fileRef = useRef<HTMLInputElement>(null);
   const dirRef = useRef<HTMLInputElement>(null);
@@ -118,11 +127,42 @@ export function DocumentsClient({
   const myDocs = docs.filter((d) => d.owner_id === me.id);
   const sharedDocs = docs.filter((d) => d.owner_id !== me.id);
 
+  // Carpetas compartidas conmigo (únicas raíces)
+  const sharedFolderRoots: string[] = Array.from(
+    new Set(
+      folderShares
+        .filter((fs) => fs.shared_with_user_id === me.id)
+        .map((fs) => fs.folder_path)
+    )
+  ).sort((a, b) => a.localeCompare(b, "es"));
+
+  // En vista "shared", qué mostrar según la ruta actual
+  const sharedViewFolders: string[] = view === "shared"
+    ? currentFolder === null
+      ? sharedFolderRoots.filter((f) => !search || f.toLowerCase().includes(search.toLowerCase()))
+      : Array.from(new Set(
+          sharedDocs
+            .filter((d) => !isFolder(d) && d.folder?.startsWith(currentFolder + "/"))
+            .map((d) => d.folder!.slice(currentFolder.length + 1).split("/")[0])
+        )).filter((f) => !search || f.toLowerCase().includes(search.toLowerCase())).sort((a, b) => a.localeCompare(b, "es"))
+    : [];
+
+  const sharedViewFiles: Doc[] = view === "shared"
+    ? sharedDocs.filter((d) => !isFolder(d) && (
+        currentFolder === null
+          ? !sharedFolderRoots.some((fp) => d.folder === fp || d.folder?.startsWith(fp + "/"))
+          : d.folder === currentFolder
+      ) && d.name.toLowerCase().includes(search.toLowerCase()))
+    : [];
+
   const folders = childFolders(myDocs, currentFolder);
   const directFiles = myDocs.filter(
     (d) => !isFolder(d) && d.folder === currentFolder && d.name.toLowerCase().includes(search.toLowerCase())
   );
-  const filteredShared = sharedDocs.filter((d) => d.name.toLowerCase().includes(search.toLowerCase()));
+
+  // Usuarios con los que se ha compartido una carpeta (para mostrar avatares)
+  const folderSharees = (folderPath: string) =>
+    folderShares.filter((fs) => fs.owner_id === me.id && fs.folder_path === folderPath).map((fs) => fs.shared_with_user_id);
 
   function navigate(segment: string) {
     setPath((p) => [...p, segment]);
@@ -267,11 +307,32 @@ export function DocumentsClient({
     setShareBusy(false);
   }
 
+  async function toggleFolderShare(folderPath: string, userId: string) {
+    if (shareFolderBusy) return;
+    setShareFolderBusy(true);
+    const existing = folderShares.find((fs) => fs.owner_id === me.id && fs.folder_path === folderPath && fs.shared_with_user_id === userId);
+    if (existing) {
+      await supabase.from("document_folder_shares").delete().eq("id", existing.id);
+      setFolderShares((prev) => prev.filter((fs) => fs.id !== existing.id));
+    } else {
+      const { data } = await supabase
+        .from("document_folder_shares")
+        .insert({ owner_id: me.id, folder_path: folderPath, shared_with_user_id: userId })
+        .select()
+        .single();
+      if (data) setFolderShares((prev) => [...prev, data as FolderShare]);
+    }
+    setShareFolderBusy(false);
+  }
+
   const docSharees = (doc: Doc) => shares.filter((s) => s.document_id === doc.id).map((s) => s.shared_with_user_id);
   const teamById = new Map(team.map((t) => [t.id, t.name]));
   const shareCandidates = team.filter((t) => t.id !== me.id).filter((t) => !shareQuery || t.name.toLowerCase().includes(shareQuery.toLowerCase()));
+  const shareFolderCandidates = team.filter((t) => t.id !== me.id).filter((t) => !shareFolderQuery || t.name.toLowerCase().includes(shareFolderQuery.toLowerCase()));
 
-  const isEmpty = view === "mine" ? folders.length === 0 && directFiles.length === 0 : filteredShared.length === 0;
+  const isEmpty = view === "mine"
+    ? folders.length === 0 && directFiles.length === 0
+    : sharedViewFolders.length === 0 && sharedViewFiles.length === 0;
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, background: "var(--nc-bg)" }}>
@@ -381,18 +442,32 @@ export function DocumentsClient({
                 const fullPath = currentFolder ? `${currentFolder}/${f}` : f;
                 const count = myDocs.filter((d) => !isFolder(d) && (d.folder === fullPath || d.folder?.startsWith(fullPath + "/"))).length;
                 return (
-                  <FolderCard key={f} name={f} count={count} onClick={() => navigate(f)} onDelete={() => handleDeleteFolder(f)} />
+                  <FolderCard
+                    key={f} name={f} count={count}
+                    sharees={folderSharees(fullPath)} teamById={teamById}
+                    onClick={() => navigate(f)}
+                    onDelete={() => handleDeleteFolder(f)}
+                    onShare={() => { setShareFolderPath(fullPath); setShareFolderQuery(""); }}
+                  />
                 );
               })}
 
+            {/* Carpetas compartidas conmigo */}
+            {view === "shared" && sharedViewFolders.map((f) => {
+              const fullPath = currentFolder ? `${currentFolder}/${f}` : f;
+              const count = sharedDocs.filter((d) => !isFolder(d) && (d.folder === fullPath || d.folder?.startsWith(fullPath + "/"))).length;
+              return (
+                <FolderCard key={f} name={f} count={count} sharees={[]} teamById={teamById}
+                  onClick={() => navigate(f)} onDelete={() => {}} onShare={() => {}} readOnly />
+              );
+            })}
+
             {/* Archivos */}
-            {(view === "mine" ? directFiles : filteredShared).map((doc) => (
+            {(view === "mine" ? directFiles : sharedViewFiles).map((doc) => (
               <FileCard
-                key={doc.id}
-                doc={doc}
+                key={doc.id} doc={doc}
                 sharees={view === "mine" ? docSharees(doc) : []}
-                teamById={teamById}
-                isOwner={view === "mine"}
+                teamById={teamById} isOwner={view === "mine"}
                 onDownload={() => handleDownload(doc)}
                 onDelete={() => handleDelete(doc)}
                 onShare={() => { setShareDoc(doc); setShareQuery(""); }}
@@ -452,6 +527,43 @@ export function DocumentsClient({
           </div>
         </Modal>
       )}
+
+      {/* Modal compartir carpeta */}
+      {shareFolderPath !== null && (
+        <Modal
+          title="Compartir carpeta"
+          subtitle={shareFolderPath.split("/").pop()}
+          onClose={() => setShareFolderPath(null)}
+        >
+          <div style={{ padding: "12px 16px" }}>
+            <input
+              autoFocus value={shareFolderQuery} onChange={(e) => setShareFolderQuery(e.target.value)}
+              placeholder="Buscar persona…" className="nc-input"
+              style={{ width: "100%", fontSize: 13, padding: "7px 10px", marginBottom: 10 }}
+            />
+            <div style={{ maxHeight: 300, overflow: "auto" }}>
+              {shareFolderCandidates.length === 0
+                ? <div style={{ padding: "18px 0", fontSize: 12, color: "var(--nc-mute)", textAlign: "center" }}>Sin coincidencias</div>
+                : shareFolderCandidates.map((p) => {
+                  const on = folderSharees(shareFolderPath).includes(p.id);
+                  return (
+                    <button key={p.id} type="button" onClick={() => toggleFolderShare(shareFolderPath, p.id)} disabled={shareFolderBusy}
+                      style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "8px 6px", background: on ? "var(--nc-green-soft)" : "transparent", borderRadius: 6, fontSize: 12.5, textAlign: "left", cursor: "pointer" }}>
+                      <span style={{ width: 16, height: 16, borderRadius: 4, border: "1.5px solid var(--nc-line)", background: on ? "var(--nc-green)" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", color: "white", flexShrink: 0 }}>
+                        {on && <ICheck size={10} />}
+                      </span>
+                      <Avatar id={p.id} name={p.name} size="sm" />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 500, color: "var(--nc-ink)" }}>{p.name}</div>
+                        <div style={{ fontSize: 10, color: "var(--nc-mute)" }}>Acceso a todos los archivos de la carpeta</div>
+                      </div>
+                    </button>
+                  );
+                })}
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
@@ -465,21 +577,34 @@ function DropItem({ children, onClick, icon }: { children: React.ReactNode; onCl
   );
 }
 
-function FolderCard({ name, count, onClick, onDelete }: { name: string; count: number; onClick: () => void; onDelete: () => void }) {
+function FolderCard({ name, count, sharees, teamById, onClick, onDelete, onShare, readOnly }: {
+  name: string; count: number; sharees: string[]; teamById: Map<string, string>;
+  onClick: () => void; onDelete: () => void; onShare: () => void; readOnly?: boolean;
+}) {
   return (
-    <div style={{ position: "relative", display: "flex", flexDirection: "column", alignItems: "center", gap: 8, padding: "16px 10px 10px", background: "var(--nc-surface)", border: "1px solid var(--nc-line)", borderRadius: "var(--r-md)", cursor: "pointer", textAlign: "center" }}
+    <div style={{ position: "relative", display: "flex", flexDirection: "column", alignItems: "center", gap: 6, padding: "16px 10px 10px", background: "var(--nc-surface)", border: "1px solid var(--nc-line)", borderRadius: "var(--r-md)", cursor: "pointer", textAlign: "center" }}
       onClick={onClick}>
       <IFolder size={36} style={{ color: "var(--nc-yellow)" }} />
-      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--nc-ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%", paddingLeft: 20, paddingRight: 20 }}>{name}</div>
+      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--nc-ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%", paddingLeft: 16, paddingRight: 16 }}>{name}</div>
       <div style={{ fontSize: 10.5, color: "var(--nc-mute)" }}>{count} elemento{count !== 1 ? "s" : ""}</div>
-      <button
-        className="nc-icon-btn"
-        title="Eliminar carpeta"
-        onClick={(e) => { e.stopPropagation(); onDelete(); }}
-        style={{ position: "absolute", top: 6, right: 6, color: "var(--nc-mute)", opacity: 0.6 }}
-      >
-        <ITrash size={11} />
-      </button>
+      {sharees.length > 0 && (
+        <div style={{ display: "flex", gap: 2, justifyContent: "center" }}>
+          {sharees.slice(0, 3).map((uid) => <Avatar key={uid} id={uid} name={teamById.get(uid) ?? "?"} size="sm" />)}
+          {sharees.length > 3 && <span style={{ fontSize: 9.5, color: "var(--nc-mute)", alignSelf: "center" }}>+{sharees.length - 3}</span>}
+        </div>
+      )}
+      {!readOnly && (
+        <>
+          <button className="nc-icon-btn" title="Compartir carpeta" onClick={(e) => { e.stopPropagation(); onShare(); }}
+            style={{ position: "absolute", top: 6, left: 6, color: "var(--nc-mute)", opacity: 0.7 }}>
+            <IShare size={11} />
+          </button>
+          <button className="nc-icon-btn" title="Eliminar carpeta" onClick={(e) => { e.stopPropagation(); onDelete(); }}
+            style={{ position: "absolute", top: 6, right: 6, color: "var(--nc-mute)", opacity: 0.6 }}>
+            <ITrash size={11} />
+          </button>
+        </>
+      )}
     </div>
   );
 }
