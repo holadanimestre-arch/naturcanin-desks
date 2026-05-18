@@ -48,10 +48,22 @@ function formatDate(ts: string) {
   return new Date(ts).toLocaleDateString("es-ES", { day: "numeric", month: "short", year: "numeric" });
 }
 
-// Dada la ruta actual y todos los docs del usuario, devuelve las carpetas hijas visibles
+const FOLDER_MIME = "inode/directory";
+const isFolder = (d: Doc) => d.mime_type === FOLDER_MIME;
+
+// Devuelve nombres de carpetas visibles en el nivel actual:
+// - marcadores explícitos (mime = inode/directory) en este nivel
+// - carpetas virtuales derivadas de los paths de los archivos
 function childFolders(docs: Doc[], currentFolder: string | null): string[] {
   const names = new Set<string>();
   for (const d of docs) {
+    // marcadores explícitos de carpeta en este nivel
+    if (isFolder(d) && d.folder === currentFolder) {
+      names.add(d.name);
+      continue;
+    }
+    // carpetas virtuales derivadas de rutas de archivos
+    if (isFolder(d)) continue;
     if (currentFolder === null) {
       if (d.folder) names.add(d.folder.split("/")[0]);
     } else {
@@ -108,7 +120,7 @@ export function DocumentsClient({
 
   const folders = childFolders(myDocs, currentFolder);
   const directFiles = myDocs.filter(
-    (d) => d.folder === currentFolder && d.name.toLowerCase().includes(search.toLowerCase())
+    (d) => !isFolder(d) && d.folder === currentFolder && d.name.toLowerCase().includes(search.toLowerCase())
   );
   const filteredShared = sharedDocs.filter((d) => d.name.toLowerCase().includes(search.toLowerCase()));
 
@@ -122,12 +134,21 @@ export function DocumentsClient({
     setSearch("");
   }
 
-  function createFolder() {
+  async function createFolder() {
     const name = newFolderName.trim();
     if (!name) return;
-    navigate(name);
     setNewFolderName("");
     setNewFolderModal(false);
+
+    const id = crypto.randomUUID();
+    const { data: inserted } = await supabase
+      .from("documents")
+      .insert({ id, owner_id: me.id, name, size: 0, mime_type: FOLDER_MIME, storage_path: `__folder__/${id}`, folder: currentFolder })
+      .select()
+      .single();
+
+    if (inserted) setDocs((prev) => [inserted as Doc, ...prev]);
+    navigate(name);
   }
 
   async function uploadFiles(files: File[], folderOverride?: string) {
@@ -206,10 +227,30 @@ export function DocumentsClient({
 
   async function handleDelete(doc: Doc) {
     if (!confirm(`¿Eliminar "${doc.name}"?`)) return;
-    await supabase.storage.from("documents").remove([doc.storage_path]);
+    if (!doc.storage_path.startsWith("__folder__")) {
+      await supabase.storage.from("documents").remove([doc.storage_path]);
+    }
     await supabase.from("documents").delete().eq("id", doc.id);
     setDocs((prev) => prev.filter((d) => d.id !== doc.id));
     setShares((prev) => prev.filter((s) => s.document_id !== doc.id));
+  }
+
+  async function handleDeleteFolder(folderName: string) {
+    const fullPath = currentFolder ? `${currentFolder}/${folderName}` : folderName;
+    const hasChildren = myDocs.some(
+      (d) => d.folder === fullPath || d.folder?.startsWith(fullPath + "/")
+    );
+    if (hasChildren) {
+      alert("La carpeta contiene archivos. Elimínalos primero.");
+      return;
+    }
+    if (!confirm(`¿Eliminar la carpeta "${folderName}"?`)) return;
+    // Eliminar marcador
+    const marker = myDocs.find((d) => isFolder(d) && d.name === folderName && d.folder === currentFolder);
+    if (marker) {
+      await supabase.from("documents").delete().eq("id", marker.id);
+      setDocs((prev) => prev.filter((d) => d.id !== marker.id));
+    }
   }
 
   async function toggleShare(doc: Doc, userId: string) {
@@ -337,12 +378,10 @@ export function DocumentsClient({
             {view === "mine" && folders
               .filter((f) => !search || f.toLowerCase().includes(search.toLowerCase()))
               .map((f) => {
-                const count = myDocs.filter((d) => {
-                  const p = currentFolder ? currentFolder + "/" + f : f;
-                  return d.folder === p || d.folder?.startsWith(p + "/");
-                }).length;
+                const fullPath = currentFolder ? `${currentFolder}/${f}` : f;
+                const count = myDocs.filter((d) => !isFolder(d) && (d.folder === fullPath || d.folder?.startsWith(fullPath + "/"))).length;
                 return (
-                  <FolderCard key={f} name={f} count={count} onClick={() => navigate(f)} />
+                  <FolderCard key={f} name={f} count={count} onClick={() => navigate(f)} onDelete={() => handleDeleteFolder(f)} />
                 );
               })}
 
@@ -426,14 +465,22 @@ function DropItem({ children, onClick, icon }: { children: React.ReactNode; onCl
   );
 }
 
-function FolderCard({ name, count, onClick }: { name: string; count: number; onClick: () => void }) {
+function FolderCard({ name, count, onClick, onDelete }: { name: string; count: number; onClick: () => void; onDelete: () => void }) {
   return (
-    <button onClick={onClick}
-      style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, padding: "16px 10px", background: "var(--nc-surface)", border: "1px solid var(--nc-line)", borderRadius: "var(--r-md)", cursor: "pointer", textAlign: "center" }}>
+    <div style={{ position: "relative", display: "flex", flexDirection: "column", alignItems: "center", gap: 8, padding: "16px 10px 10px", background: "var(--nc-surface)", border: "1px solid var(--nc-line)", borderRadius: "var(--r-md)", cursor: "pointer", textAlign: "center" }}
+      onClick={onClick}>
       <IFolder size={36} style={{ color: "var(--nc-yellow)" }} />
-      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--nc-ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>{name}</div>
+      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--nc-ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%", paddingLeft: 20, paddingRight: 20 }}>{name}</div>
       <div style={{ fontSize: 10.5, color: "var(--nc-mute)" }}>{count} elemento{count !== 1 ? "s" : ""}</div>
-    </button>
+      <button
+        className="nc-icon-btn"
+        title="Eliminar carpeta"
+        onClick={(e) => { e.stopPropagation(); onDelete(); }}
+        style={{ position: "absolute", top: 6, right: 6, color: "var(--nc-mute)", opacity: 0.6 }}
+      >
+        <ITrash size={11} />
+      </button>
+    </div>
   );
 }
 
