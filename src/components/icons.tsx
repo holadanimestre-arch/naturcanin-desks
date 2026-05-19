@@ -118,3 +118,6 @@ export const IDownload = ({ size, ...p }: IconProps) => (
 export const IShare = ({ size, ...p }: IconProps) => (
   <svg {...base(size)} {...p}><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
 );
+export const IPipeline = ({ size, ...p }: IconProps) => (
+  <svg {...base(size)} {...p}><rect x="2" y="3" width="6" height="5" rx="1"/><rect x="9" y="10" width="6" height="5" rx="1"/><rect x="16" y="17" width="6" height="5" rx="1"/><path d="M8 5.5h2.5a1 1 0 0 1 1 1V10M15 12.5h2.5a1 1 0 0 1 1 1V17"/></svg>
+);
