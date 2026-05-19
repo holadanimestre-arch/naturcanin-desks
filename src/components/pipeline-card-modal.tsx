@@ -436,34 +436,6 @@ export function PipelineCardModal({
           position: "relative",
         }}
       >
-        {/* delete + close buttons */}
-        <div style={{ position: "absolute", top: 12, right: 12, zIndex: 10, display: "flex", gap: 6 }}>
-          <button
-            className="nc-icon-btn"
-            onClick={async () => {
-              if (!window.confirm("¿Eliminar esta tarjeta?")) return;
-              await supabase.from("pipeline_cards").delete().eq("id", cardId);
-              onDelete(cardId);
-              onClose();
-            }}
-            title="Eliminar tarjeta"
-            style={{ color: "var(--nc-danger)" }}
-            aria-label="Eliminar tarjeta"
-          >
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-              <path d="M2 3h10M5 3V2h4v1M6 6v4M8 6v4M3 3l.7 8.3a1 1 0 001 .7h4.6a1 1 0 001-.7L11 3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-            </svg>
-          </button>
-          <button
-            className="nc-icon-btn"
-            onClick={onClose}
-            aria-label="Cerrar"
-          >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <path d="M12 4L4 12M4 4l8 8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-            </svg>
-          </button>
-        </div>
 
         {loading ? (
           <div
@@ -490,49 +462,74 @@ export function PipelineCardModal({
                 overflow: "hidden",
               }}
             >
-              <div style={{ padding: "24px 28px 16px", borderBottom: "1px solid var(--nc-line)" }}>
-                {/* title */}
-                {editingTitle ? (
-                  <input
-                    ref={titleRef}
-                    className="nc-input"
-                    value={titleDraft}
-                    onChange={(e) => setTitleDraft(e.target.value)}
-                    onBlur={saveTitle}
-                    onKeyDown={handleTitleKeyDown}
-                    style={{
-                      fontSize: 20,
-                      fontWeight: 700,
-                      width: "100%",
-                      marginBottom: 6,
-                      paddingRight: 32,
-                    }}
-                  />
-                ) : (
-                  <h2
-                    onClick={() => setEditingTitle(true)}
-                    title="Haz clic para editar"
-                    style={{
-                      fontSize: 20,
-                      fontWeight: 700,
-                      color: "var(--nc-ink)",
-                      margin: "0 0 6px",
-                      cursor: "text",
-                      lineHeight: 1.3,
-                      paddingRight: 32,
-                      wordBreak: "break-word",
-                    }}
-                  >
-                    {card?.title}
-                  </h2>
-                )}
+              <div style={{ padding: "20px 24px 14px", borderBottom: "1px solid var(--nc-line)" }}>
+                {/* title row + action buttons */}
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    {editingTitle ? (
+                      <input
+                        ref={titleRef}
+                        className="nc-input"
+                        value={titleDraft}
+                        onChange={(e) => setTitleDraft(e.target.value)}
+                        onBlur={saveTitle}
+                        onKeyDown={handleTitleKeyDown}
+                        style={{ fontSize: 18, fontWeight: 700, width: "100%", marginBottom: 4 }}
+                      />
+                    ) : (
+                      <h2
+                        onClick={() => setEditingTitle(true)}
+                        title="Haz clic para editar"
+                        style={{
+                          fontSize: 18,
+                          fontWeight: 700,
+                          color: "var(--nc-ink)",
+                          margin: "0 0 4px",
+                          cursor: "text",
+                          lineHeight: 1.3,
+                          wordBreak: "break-word",
+                        }}
+                      >
+                        {card?.title}
+                      </h2>
+                    )}
+                    <span style={{ fontSize: 12, color: "var(--nc-mute)" }}>
+                      En columna:{" "}
+                      <strong style={{ fontWeight: 600, color: "var(--nc-mute)" }}>
+                        {columnName}
+                      </strong>
+                    </span>
+                  </div>
 
-                <span style={{ fontSize: 12, color: "var(--nc-mute)" }}>
-                  En columna:{" "}
-                  <strong style={{ fontWeight: 600, color: "var(--nc-mute)" }}>
-                    {columnName}
-                  </strong>
-                </span>
+                  {/* Delete + close */}
+                  <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                    <button
+                      className="nc-icon-btn"
+                      onClick={async () => {
+                        if (!window.confirm("¿Eliminar esta tarjeta?")) return;
+                        await supabase.from("pipeline_cards").delete().eq("id", cardId);
+                        onDelete(cardId);
+                        onClose();
+                      }}
+                      title="Eliminar tarjeta"
+                      style={{ color: "var(--nc-danger)" }}
+                      aria-label="Eliminar tarjeta"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                        <path d="M2 3h10M5 3V2h4v1M6 6v4M8 6v4M3 3l.7 8.3a1 1 0 001 .7h4.6a1 1 0 001-.7L11 3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+                      </svg>
+                    </button>
+                    <button
+                      className="nc-icon-btn"
+                      onClick={onClose}
+                      aria-label="Cerrar"
+                    >
+                      <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                        <path d="M12 4L4 12M4 4l8 8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
               </div>
 
               {/* notes */}
