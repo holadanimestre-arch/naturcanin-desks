@@ -326,24 +326,24 @@ function ColumnHeader({
           →
         </button>
         <div style={{ flex: 1 }} />
-        {cardCount === 0 && (
-          <button
-            onClick={onDelete}
-            title="Eliminar columna"
-            style={{
-              background: "none",
-              border: "none",
-              color: "#6e7681",
-              cursor: "pointer",
-              fontSize: 13,
-              padding: "2px 5px",
-              borderRadius: 4,
-              lineHeight: 1,
-            }}
-          >
-            ✕
-          </button>
-        )}
+        <button
+          onClick={onDelete}
+          title={cardCount > 0 ? `Eliminar columna y sus ${cardCount} tarjeta(s)` : "Eliminar columna"}
+          style={{
+            background: "none",
+            border: "none",
+            color: "#6e7681",
+            cursor: "pointer",
+            fontSize: 13,
+            padding: "2px 5px",
+            borderRadius: 4,
+            lineHeight: 1,
+          }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "#f85149"; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "#6e7681"; }}
+        >
+          ✕
+        </button>
       </div>
     </div>
   );
@@ -355,10 +355,12 @@ function CardTile({
   card,
   index,
   onClick,
+  onDelete,
 }: {
   card: Card;
   index: number;
   onClick: () => void;
+  onDelete: () => void;
 }) {
   const [hovered, setHovered] = useState(false);
 
@@ -369,7 +371,6 @@ function CardTile({
           ref={provided.innerRef}
           {...provided.draggableProps}
           {...provided.dragHandleProps}
-          onClick={onClick}
           onMouseEnter={() => setHovered(true)}
           onMouseLeave={() => setHovered(false)}
           style={{
@@ -386,20 +387,52 @@ function CardTile({
               ? "0 8px 24px rgba(0,0,0,0.6)"
               : "none",
             transition: "background 0.1s, border-color 0.1s",
+            position: "relative",
             ...provided.draggableProps.style,
           }}
         >
           <p
+            onClick={onClick}
             style={{
               margin: 0,
               fontSize: 13,
               color: TEXT_PRIMARY,
               lineHeight: 1.4,
               wordBreak: "break-word",
+              paddingRight: hovered ? 22 : 0,
+              transition: "padding-right 0.1s",
             }}
           >
             {card.title}
           </p>
+
+          {/* Delete button — visible on hover */}
+          {hovered && !snapshot.isDragging && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onDelete(); }}
+              title="Eliminar tarjeta"
+              style={{
+                position: "absolute",
+                top: 6,
+                right: 6,
+                background: "none",
+                border: "none",
+                color: "#6e7681",
+                cursor: "pointer",
+                padding: "2px 4px",
+                borderRadius: 4,
+                lineHeight: 1,
+                fontSize: 13,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "#f85149"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "#6e7681"; }}
+            >
+              ✕
+            </button>
+          )}
         </div>
       )}
     </Draggable>
@@ -708,8 +741,21 @@ export function PipelineBoard({
   }
 
   async function handleDeleteColumn(colId: string) {
+    const colCards = cards.filter((c) => c.column_id === colId);
+    if (colCards.length > 0) {
+      if (!window.confirm(`Esta columna tiene ${colCards.length} tarjeta(s). ¿Eliminarla junto con todas sus tarjetas?`)) return;
+      setCards((prev) => prev.filter((c) => c.column_id !== colId));
+    }
     setColumns((prev) => prev.filter((c) => c.id !== colId));
+    // cascade deletes cards in DB automatically
     await supabase.from("pipeline_columns").delete().eq("id", colId);
+  }
+
+  async function handleDeleteCard(cardId: string) {
+    if (!window.confirm("¿Eliminar esta tarjeta?")) return;
+    setCards((prev) => prev.filter((c) => c.id !== cardId));
+    if (openCardId === cardId) setOpenCardId(null);
+    await supabase.from("pipeline_cards").delete().eq("id", cardId);
   }
 
   async function handleAddColumn(name: string, color: string) {
@@ -888,6 +934,7 @@ export function PipelineBoard({
                           card={card}
                           index={idx}
                           onClick={() => setOpenCardId(card.id)}
+                          onDelete={() => handleDeleteCard(card.id)}
                         />
                       ))}
                       {provided.placeholder}
@@ -999,6 +1046,9 @@ export function PipelineBoard({
                 c.id === openCardId ? { ...c, title: newTitle } : c
               )
             );
+          }}
+          onDelete={(cardId) => {
+            setCards((prev) => prev.filter((c) => c.id !== cardId));
           }}
         />
       )}

@@ -48,6 +48,7 @@ interface PipelineCardModalProps {
   teamNames: Record<string, string>;
   onClose: () => void;
   onTitleChange: (cardId: string, newTitle: string) => void;
+  onDelete: (cardId: string) => void;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -186,6 +187,7 @@ export function PipelineCardModal({
   teamNames,
   onClose,
   onTitleChange,
+  onDelete,
 }: PipelineCardModalProps) {
   const supabase = createClient();
 
@@ -434,22 +436,34 @@ export function PipelineCardModal({
           position: "relative",
         }}
       >
-        {/* close button */}
-        <button
-          className="nc-icon-btn"
-          onClick={onClose}
-          style={{
-            position: "absolute",
-            top: 12,
-            right: 12,
-            zIndex: 10,
-          }}
-          aria-label="Cerrar"
-        >
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-            <path d="M12 4L4 12M4 4l8 8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-          </svg>
-        </button>
+        {/* delete + close buttons */}
+        <div style={{ position: "absolute", top: 12, right: 12, zIndex: 10, display: "flex", gap: 6 }}>
+          <button
+            className="nc-icon-btn"
+            onClick={async () => {
+              if (!window.confirm("¿Eliminar esta tarjeta?")) return;
+              await supabase.from("pipeline_cards").delete().eq("id", cardId);
+              onDelete(cardId);
+              onClose();
+            }}
+            title="Eliminar tarjeta"
+            style={{ color: "var(--nc-danger)" }}
+            aria-label="Eliminar tarjeta"
+          >
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <path d="M2 3h10M5 3V2h4v1M6 6v4M8 6v4M3 3l.7 8.3a1 1 0 001 .7h4.6a1 1 0 001-.7L11 3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+            </svg>
+          </button>
+          <button
+            className="nc-icon-btn"
+            onClick={onClose}
+            aria-label="Cerrar"
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <path d="M12 4L4 12M4 4l8 8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+            </svg>
+          </button>
+        </div>
 
         {loading ? (
           <div
