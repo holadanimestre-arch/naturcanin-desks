@@ -25,6 +25,7 @@ export type Task = {
   files: number;
   subs?: { d: number; t: number };
   desc?: string;
+  hasUnread?: boolean;       // hay comentarios/menciones no leídos para el usuario actual
 };
 
 export const people: Person[] = [

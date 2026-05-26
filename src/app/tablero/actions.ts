@@ -15,6 +15,7 @@ export async function updateTaskState(taskId: number, state: TaskState) {
     .eq("id", taskId);
 
   if (error) return { error: error.message };
+
   revalidatePath("/tablero");
   revalidatePath("/");
   revalidatePath("/mis-tareas");

@@ -44,14 +44,37 @@ const SELECT_TASK = `
   subtasks(id, done)
 `;
 
+/** Obtiene los IDs de tareas con notificaciones de comentario/mención no leídas
+ *  para el usuario actual. Devuelve un Set vacío si no hay usuario autenticado. */
+async function getUnreadTaskIdSet(supabase: Awaited<ReturnType<typeof createClient>>, userId: string): Promise<Set<number>> {
+  const { data } = await supabase
+    .from("notifications")
+    .select("task_id")
+    .eq("user_id", userId)
+    .eq("read", false)
+    .in("type", ["comment", "mention"])
+    .not("task_id", "is", null);
+
+  return new Set((data ?? []).map((n: any) => Number(n.task_id)));
+}
+
 export async function getTasks(): Promise<Task[]> {
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("tasks")
-    .select(SELECT_TASK)
-    .order("created_at", { ascending: false });
-  if (error || !data) return [];
-  return data.map(mapRow);
+  const { data: { user } } = await supabase.auth.getUser();
+
+  const [tasksResult, unreadSet] = await Promise.all([
+    supabase
+      .from("tasks")
+      .select(SELECT_TASK)
+      .order("created_at", { ascending: false }),
+    user ? getUnreadTaskIdSet(supabase, user.id) : Promise.resolve(new Set<number>()),
+  ]);
+
+  if (tasksResult.error || !tasksResult.data) return [];
+  return tasksResult.data.map((t) => ({
+    ...mapRow(t),
+    hasUnread: unreadSet.has(Number(t.id)),
+  }));
 }
 
 export async function getTask(id: number): Promise<Task | null> {
@@ -88,13 +111,35 @@ export async function getMyTasks(): Promise<Task[]> {
   const taskIds = assignments?.map((a) => a.task_id) ?? [];
   if (taskIds.length === 0) return [];
 
-  const { data } = await supabase
-    .from("tasks")
-    .select(SELECT_TASK)
-    .in("id", taskIds)
-    .order("due_date", { ascending: true, nullsFirst: false });
+  const [tasksResult, unreadSet] = await Promise.all([
+    supabase
+      .from("tasks")
+      .select(SELECT_TASK)
+      .in("id", taskIds)
+      .order("due_date", { ascending: true, nullsFirst: false }),
+    getUnreadTaskIdSet(supabase, user.id),
+  ]);
 
-  return data?.map(mapRow) ?? [];
+  return (tasksResult.data ?? []).map((t) => ({
+    ...mapRow(t),
+    hasUnread: unreadSet.has(Number(t.id)),
+  }));
+}
+
+/** Marca como leídas todas las notificaciones de comentario/mención del usuario
+ *  actual vinculadas a una tarea concreta. Se llama al abrir el detalle de tarea. */
+export async function markTaskNotificationsRead(taskId: number): Promise<void> {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return;
+
+  await supabase
+    .from("notifications")
+    .update({ read: true })
+    .eq("user_id", user.id)
+    .eq("task_id", taskId)
+    .in("type", ["comment", "mention"])
+    .eq("read", false);
 }
 
 export type CalendarTask = {

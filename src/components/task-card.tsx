@@ -19,6 +19,7 @@ export function TaskCard({
       className="nc-card-hover"
       style={{
         display: "block",
+        position: "relative",
         background: "var(--nc-surface)",
         border: "1px solid var(--nc-line)",
         borderRadius: "var(--r-md)",
@@ -29,6 +30,22 @@ export function TaskCard({
         color: "inherit",
       }}
     >
+      {/* Bolita roja: comentario/mención no leído */}
+      {t.hasUnread && (
+        <span
+          style={{
+            position: "absolute",
+            top: 8,
+            right: 8,
+            width: 8,
+            height: 8,
+            borderRadius: "50%",
+            background: "var(--nc-danger)",
+            border: "1.5px solid var(--nc-surface)",
+          }}
+          aria-label="Comentario no leído"
+        />
+      )}
       <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
         <Tag k={t.tag} />
         <Priority level={t.prio} />

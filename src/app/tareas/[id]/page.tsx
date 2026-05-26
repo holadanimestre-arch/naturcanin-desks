@@ -10,7 +10,7 @@ import { SubtasksPanel } from "@/components/subtasks-panel";
 import { ICheck, IChev, IEye, ILock } from "@/components/icons";
 import {
   getTask, getTaskComments, getTaskFiles, getSignedUrl, getTaskActivity,
-  getTaskSubtasks,
+  getTaskSubtasks, markTaskNotificationsRead,
   type ActivityEntry,
 } from "@/lib/supabase/queries";
 import { getTeam } from "@/lib/supabase/team";
@@ -43,6 +43,8 @@ export default async function TaskDetailPage({
     getTaskActivity(taskId),
     getTaskSubtasks(taskId),
     getTeam(),
+    // Marcar notificaciones de comentario/mención de esta tarea como leídas
+    markTaskNotificationsRead(taskId),
   ]);
   if (!t) return notFound();
 

@@ -5,7 +5,38 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logError } from "@/lib/logger";
-import { notifyAssigned } from "@/lib/notifications";
+import { notifyAssigned, notifyComment, notifyMention } from "@/lib/notifications";
+
+// ── Helpers de mención ────────────────────────────────────────────────────────
+
+/** Extrae los nombres tras @ en el texto: "@Laura" → ["Laura"], "@Ana G." → ["Ana G."] */
+function parseMentionNames(text: string): string[] {
+  const re = /@([A-ZÁÉÍÓÚÜÑa-záéíóúüñ][A-ZÁÉÍÓÚÜÑa-záéíóúüñ.]*(?:\s[A-ZÁÉÍÓÚÜÑa-záéíóúüñ][A-ZÁÉÍÓÚÜÑa-záéíóúüñ.]*)?)/g;
+  const results: string[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) results.push(m[1]);
+  return [...new Set(results)];
+}
+
+/** Busca IDs de usuario cuyo nombre empiece por alguno de los nombres mencionados. */
+function findMentionedUserIds(
+  mentionNames: string[],
+  profiles: { id: string; name: string }[],
+): string[] {
+  const ids: string[] = [];
+  for (const mention of mentionNames) {
+    const lower = mention.toLowerCase();
+    for (const p of profiles) {
+      const pLower = p.name.toLowerCase();
+      if (pLower === lower || pLower.startsWith(lower)) {
+        ids.push(p.id);
+      }
+    }
+  }
+  return [...new Set(ids)];
+}
+
+// ── Acciones ──────────────────────────────────────────────────────────────────
 
 export async function recordFile(taskId: number, fileName: string, storagePath: string) {
   const supabase = await createClient();
@@ -36,6 +67,42 @@ export async function postComment(taskId: number, text: string) {
   });
 
   if (error) return { error: error.message };
+
+  // Disparar notificaciones (no bloquea si falla)
+  try {
+    const admin = createAdminClient();
+
+    const [taskResult, assigneesResult, profileResult] = await Promise.all([
+      admin.from("tasks").select("title").eq("id", taskId).single(),
+      admin.from("task_assignees").select("user_id").eq("task_id", taskId),
+      admin.from("profiles").select("id, name").eq("id", user.id).single(),
+    ]);
+
+    const taskTitle = taskResult.data?.title ?? "una tarea";
+    const assigneeIds = (assigneesResult.data ?? []).map((a: { user_id: string }) => a.user_id);
+    const authorName = profileResult.data?.name ?? "Alguien";
+
+    // Notificar a los asignados del comentario
+    await notifyComment(admin, taskId, taskTitle, assigneeIds, user.id, authorName);
+
+    // Detectar @menciones y notificarlas por separado
+    const mentionedNames = parseMentionNames(text);
+    if (mentionedNames.length > 0) {
+      const { data: allProfiles } = await admin
+        .from("profiles")
+        .select("id, name");
+      const mentionedUserIds = findMentionedUserIds(
+        mentionedNames,
+        (allProfiles ?? []) as { id: string; name: string }[],
+      );
+      if (mentionedUserIds.length > 0) {
+        await notifyMention(admin, taskId, taskTitle, mentionedUserIds, user.id, authorName);
+      }
+    }
+  } catch {
+    // Las notificaciones son best-effort; no rompen el flujo principal
+  }
+
   revalidatePath(`/tareas/${taskId}`);
   return { success: true };
 }

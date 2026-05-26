@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { IBell } from "./icons";
+import { IBell, IMsg, ICheck } from "./icons";
 import {
   fetchNotifications,
   markAllNotificationsRead,
@@ -22,6 +22,75 @@ function timeAgo(iso: string): string {
   if (days === 1) return "ayer";
   if (days < 7) return `hace ${days} días`;
   return new Date(iso).toLocaleDateString("es-ES", { day: "numeric", month: "short" });
+}
+
+/** Icono y color del badge según el tipo de notificación */
+function NotifIcon({ type }: { type: string | null }) {
+  const configs: Record<string, { icon: React.ReactNode; bg: string; color: string }> = {
+    comment: {
+      icon: <IMsg size={11} />,
+      bg: "var(--nc-green-soft)",
+      color: "var(--nc-green-dark)",
+    },
+    mention: {
+      icon: <span style={{ fontSize: 11, fontWeight: 700 }}>@</span>,
+      bg: "var(--nc-yellow-tint, #fef9e7)",
+      color: "var(--nc-yellow-dark, #92650a)",
+    },
+    assigned: {
+      icon: <ICheck size={11} />,
+      bg: "var(--nc-green-soft)",
+      color: "var(--nc-green-dark)",
+    },
+  };
+
+  const cfg = configs[type ?? ""] ?? {
+    icon: <IBell size={11} />,
+    bg: "var(--nc-green-soft)",
+    color: "var(--nc-green-dark)",
+  };
+
+  return (
+    <div
+      style={{
+        width: 22,
+        height: 22,
+        borderRadius: "50%",
+        background: cfg.bg,
+        color: cfg.color,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        flexShrink: 0,
+      }}
+    >
+      {cfg.icon}
+    </div>
+  );
+}
+
+/** Etiqueta de tipo pequeña para diferenciar visualmente */
+function TypeBadge({ type }: { type: string | null }) {
+  const labels: Record<string, string> = {
+    comment: "Comentario",
+    mention: "Mención",
+    assigned: "Asignación",
+  };
+  const label = type ? labels[type] : null;
+  if (!label) return null;
+  return (
+    <span
+      style={{
+        fontSize: 9,
+        fontWeight: 600,
+        color: "var(--nc-mute)",
+        textTransform: "uppercase",
+        letterSpacing: "0.04em",
+      }}
+    >
+      {label}
+    </span>
+  );
 }
 
 export function NotificationsBell() {
@@ -109,7 +178,7 @@ export function NotificationsBell() {
             top: "calc(100% + 6px)",
             right: 0,
             width: 320,
-            maxHeight: 420,
+            maxHeight: 440,
             background: "var(--nc-surface)",
             border: "1px solid var(--nc-line)",
             borderRadius: "var(--r-md)",
@@ -120,6 +189,7 @@ export function NotificationsBell() {
             flexDirection: "column",
           }}
         >
+          {/* Header */}
           <div
             style={{
               padding: "10px 14px",
@@ -148,6 +218,7 @@ export function NotificationsBell() {
             )}
           </div>
 
+          {/* Lista */}
           <div style={{ overflow: "auto", flex: 1 }}>
             {loading && !items ? (
               <div style={{ padding: "24px 14px", textAlign: "center", fontSize: 12, color: "var(--nc-mute)" }}>
@@ -169,17 +240,12 @@ export function NotificationsBell() {
                     background: !n.read ? "var(--nc-yellow-tint)" : "transparent",
                   }}
                 >
-                  <div
-                    style={{
-                      width: 22, height: 22, borderRadius: "50%",
-                      background: "var(--nc-green-soft)", color: "var(--nc-green-dark)",
-                      display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
-                    }}
-                  >
-                    <IBell size={11} />
-                  </div>
+                  <NotifIcon type={n.type} />
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 11.5, color: "var(--nc-ink)", lineHeight: 1.4 }}>{n.text}</div>
+                    <TypeBadge type={n.type} />
+                    <div style={{ fontSize: 11.5, color: "var(--nc-ink)", lineHeight: 1.4, marginTop: 1 }}>
+                      {n.text}
+                    </div>
                     <div style={{ fontSize: 10, color: "var(--nc-mute)", marginTop: 2 }}>
                       {timeAgo(n.created_at)}
                     </div>
@@ -187,8 +253,12 @@ export function NotificationsBell() {
                   {!n.read && (
                     <div
                       style={{
-                        width: 7, height: 7, borderRadius: "50%",
-                        background: "var(--nc-yellow)", marginTop: 4, flexShrink: 0,
+                        width: 7,
+                        height: 7,
+                        borderRadius: "50%",
+                        background: "var(--nc-yellow)",
+                        marginTop: 4,
+                        flexShrink: 0,
                       }}
                     />
                   )}
