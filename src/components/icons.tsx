@@ -121,3 +121,6 @@ export const IShare = ({ size, ...p }: IconProps) => (
 export const IPipeline = ({ size, ...p }: IconProps) => (
   <svg {...base(size)} {...p}><rect x="2" y="3" width="6" height="5" rx="1"/><rect x="9" y="10" width="6" height="5" rx="1"/><rect x="16" y="17" width="6" height="5" rx="1"/><path d="M8 5.5h2.5a1 1 0 0 1 1 1V10M15 12.5h2.5a1 1 0 0 1 1 1V17"/></svg>
 );
+export const IUmbrella = ({ size, ...p }: IconProps) => (
+  <svg {...base(size)} {...p}><path d="M23 12a11.05 11.05 0 0 0-22 0Z"/><path d="M12 12v6a2 2 0 0 0 4 0"/></svg>
+);

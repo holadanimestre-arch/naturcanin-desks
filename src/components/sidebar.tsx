@@ -4,12 +4,12 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
-  IHome, IKanban, IList, ICal, IChat, IUsers, IUser, IClip, IChart, ISettings, ILog, IMenu, IFolder, IPipeline,
+  IHome, IKanban, IList, ICal, IChat, IUsers, IUser, IClip, IChart, ISettings, ILog, IMenu, IFolder, IPipeline, IUmbrella,
 } from "./icons";
 import type { SVGProps } from "react";
 
 export type SidebarKey =
-  | "home" | "board" | "my" | "cal" | "chat" | "team" | "users" | "archive" | "stats" | "logs" | "docs" | "pipeline";
+  | "home" | "board" | "my" | "cal" | "chat" | "team" | "users" | "archive" | "stats" | "logs" | "docs" | "pipeline" | "vacaciones";
 
 type Item = {
   k: SidebarKey;
@@ -24,8 +24,9 @@ const ADMIN_KEYS: SidebarKey[] = ["team", "users", "stats", "logs"];
 const items: Item[] = [
   { k: "home",    l: "Inicio",       href: "/",         Ic: IHome },
   { k: "board",   l: "Tablero",      href: "/tablero",  Ic: IKanban },
-  { k: "my",      l: "Mis tareas",   href: "/mis-tareas", Ic: IList },
-  { k: "cal",     l: "Calendario",   href: "/calendario", Ic: ICal },
+  { k: "my",        l: "Mis tareas",   href: "/mis-tareas",  Ic: IList },
+  { k: "vacaciones", l: "Vacaciones", href: "/vacaciones", Ic: IUmbrella },
+  { k: "cal",       l: "Calendario",  href: "/calendario", Ic: ICal },
   { k: "chat",    l: "Chat",         href: "/chat",     Ic: IChat },
   { k: "team",    l: "Equipo",       href: "/equipo",   Ic: IUsers },
   { k: "users",   l: "Usuarios",     href: "/usuarios", Ic: IUser },
