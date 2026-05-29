@@ -8,6 +8,8 @@ import {
   approveVacation,
   rejectVacation,
   updateUserVacationArea,
+  createEmployee,
+  deleteEmployee,
 } from "@/app/vacaciones/actions";
 import {
   VACATION_AREAS,
@@ -736,31 +738,75 @@ function VacationCalendar({
 
 // ─── Gestión de empleados (admin) ─────────────────────────────────────────
 
+const EMPTY_NEW = {
+  name: "", email: "", password: "Naturcanin2026",
+  vacation_area: "" as VacationAreaId | "",
+  vacation_conflict_extras: [] as VacationAreaId[],
+};
+
 function VacationEmployeeManager({ allUsers }: { allUsers: UserWithVacationInfo[] }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editArea, setEditArea] = useState<VacationAreaId | "">("");
   const [editExtras, setEditExtras] = useState<VacationAreaId[]>([]);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
+  const [showNewForm, setShowNewForm] = useState(false);
+  const [newData, setNewData] = useState({ ...EMPTY_NEW });
+
   const [savePending, startTransition] = useTransition();
   const [saveError, setSaveError] = useState("");
+  const [newError, setNewError] = useState("");
+  const [newSuccess, setNewSuccess] = useState("");
 
   function startEdit(u: UserWithVacationInfo) {
     setEditingId(u.id);
     setEditArea(u.vacation_area ?? "");
     setEditExtras(u.vacation_conflict_extras ?? []);
     setSaveError("");
+    setConfirmDeleteId(null);
   }
 
   function handleSave(userId: string) {
     startTransition(async () => {
       const res = await updateUserVacationArea(
         userId,
-        editArea as VacationAreaId || null,
+        (editArea as VacationAreaId) || null,
         editExtras,
       );
+      if (res?.error) setSaveError(res.error);
+      else setEditingId(null);
+    });
+  }
+
+  function handleDelete(userId: string) {
+    startTransition(async () => {
+      const res = await deleteEmployee(userId);
+      if (res?.error) setSaveError(res.error);
+      else { setConfirmDeleteId(null); setEditingId(null); }
+    });
+  }
+
+  function handleCreate() {
+    setNewError(""); setNewSuccess("");
+    if (!newData.name.trim()) { setNewError("El nombre es obligatorio"); return; }
+    if (!newData.email.trim()) { setNewError("El email es obligatorio"); return; }
+    if (!newData.password.trim() || newData.password.length < 6) {
+      setNewError("La contraseña debe tener al menos 6 caracteres"); return;
+    }
+    startTransition(async () => {
+      const res = await createEmployee({
+        name: newData.name.trim(),
+        email: newData.email.trim(),
+        password: newData.password,
+        vacation_area: (newData.vacation_area as VacationAreaId) || null,
+        vacation_conflict_extras: newData.vacation_conflict_extras,
+      });
       if (res?.error) {
-        setSaveError(res.error);
+        setNewError(res.error);
       } else {
-        setEditingId(null);
+        setNewSuccess(`✓ ${newData.name} dado de alta. Contraseña temporal: ${newData.password}`);
+        setNewData({ ...EMPTY_NEW });
+        setShowNewForm(false);
       }
     });
   }
@@ -771,21 +817,145 @@ function VacationEmployeeManager({ allUsers }: { allUsers: UserWithVacationInfo[
     );
   }
 
+  function toggleNewExtra(area: VacationAreaId) {
+    setNewData((prev) => ({
+      ...prev,
+      vacation_conflict_extras: prev.vacation_conflict_extras.includes(area)
+        ? prev.vacation_conflict_extras.filter((a) => a !== area)
+        : [...prev.vacation_conflict_extras, area],
+    }));
+  }
+
   return (
     <div style={{ maxWidth: 800 }}>
-      <p style={{ fontSize: 12, color: "var(--nc-mute)", marginBottom: 16, marginTop: 0 }}>
-        Asigna a cada empleado su área de vacaciones y reglas de conflicto adicionales.
-      </p>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+        <p style={{ fontSize: 12, color: "var(--nc-mute)", margin: 0 }}>
+          {allUsers.length} empleado{allUsers.length !== 1 ? "s" : ""} en el sistema
+        </p>
+        <button
+          className="nc-btn primary"
+          onClick={() => { setShowNewForm(true); setNewError(""); setNewSuccess(""); }}
+        >
+          <IPlus size={13} /> Nuevo empleado
+        </button>
+      </div>
 
+      {/* Mensaje de éxito tras crear */}
+      {newSuccess && (
+        <div style={{
+          padding: "10px 14px", borderRadius: "var(--r-sm)", marginBottom: 12,
+          background: "var(--nc-green-soft)", color: "var(--nc-green-dark)",
+          fontSize: 12, fontWeight: 500,
+        }}>
+          {newSuccess}
+        </div>
+      )}
+
+      {/* Formulario nuevo empleado */}
+      {showNewForm && (
+        <div style={{
+          padding: "16px", borderRadius: "var(--r-md)", marginBottom: 16,
+          background: "var(--nc-surface)", border: "2px solid var(--nc-green-soft)",
+          boxShadow: "var(--sh-1)",
+        }}>
+          <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 14 }}>Nuevo empleado</div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+            <div>
+              <label style={{ fontSize: 11.5, fontWeight: 600, display: "block", marginBottom: 4 }}>Nombre *</label>
+              <input
+                className="nc-input"
+                placeholder="Nombre completo"
+                value={newData.name}
+                onChange={(e) => setNewData((p) => ({ ...p, name: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label style={{ fontSize: 11.5, fontWeight: 600, display: "block", marginBottom: 4 }}>Email *</label>
+              <input
+                className="nc-input"
+                type="email"
+                placeholder="correo@ejemplo.com"
+                value={newData.email}
+                onChange={(e) => setNewData((p) => ({ ...p, email: e.target.value }))}
+              />
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
+            <div>
+              <label style={{ fontSize: 11.5, fontWeight: 600, display: "block", marginBottom: 4 }}>
+                Contraseña temporal *
+              </label>
+              <input
+                className="nc-input"
+                value={newData.password}
+                onChange={(e) => setNewData((p) => ({ ...p, password: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label style={{ fontSize: 11.5, fontWeight: 600, display: "block", marginBottom: 4 }}>Área de vacaciones</label>
+              <select
+                className="nc-input"
+                value={newData.vacation_area}
+                onChange={(e) => setNewData((p) => ({ ...p, vacation_area: e.target.value as VacationAreaId }))}
+              >
+                <option value="">— Sin asignar —</option>
+                {VACATION_AREA_LIST.map((a) => (
+                  <option key={a.id} value={a.id}>{a.label}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <label style={{ fontSize: 11.5, fontWeight: 600, display: "block", marginBottom: 6 }}>
+            Conflictos adicionales
+          </label>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
+            {VACATION_AREA_LIST.filter((a) => a.id !== newData.vacation_area).map((a) => {
+              const on = newData.vacation_conflict_extras.includes(a.id);
+              return (
+                <button key={a.id} onClick={() => toggleNewExtra(a.id)} style={{
+                  padding: "3px 10px", borderRadius: 99, fontSize: 10.5, fontWeight: 500,
+                  border: `1.5px solid ${on ? a.color : "var(--nc-line)"}`,
+                  background: on ? a.color + "22" : "transparent",
+                  color: on ? a.color : "var(--nc-text)", cursor: "pointer",
+                }}>
+                  {a.label}
+                </button>
+              );
+            })}
+          </div>
+
+          {newError && (
+            <div style={{ color: "var(--nc-danger)", fontSize: 11.5, marginBottom: 10 }}>{newError}</div>
+          )}
+
+          <div style={{ display: "flex", gap: 8 }}>
+            <button className="nc-btn secondary" onClick={() => { setShowNewForm(false); setNewError(""); }}>
+              Cancelar
+            </button>
+            <button className="nc-btn primary" onClick={handleCreate} disabled={savePending}>
+              {savePending ? "Creando…" : "Dar de alta"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Lista de empleados */}
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
         {allUsers.map((u) => {
           const isEditing = editingId === u.id;
+          const isConfirmingDelete = confirmDeleteId === u.id;
+
           return (
             <div
               key={u.id}
               style={{
                 padding: "12px 14px", borderRadius: "var(--r-md)",
-                background: "var(--nc-surface)", border: "1px solid var(--nc-line)",
+                background: "var(--nc-surface)",
+                border: `1px solid ${isConfirmingDelete ? "var(--nc-danger)" : "var(--nc-line)"}`,
                 boxShadow: "var(--sh-1)",
               }}
             >
@@ -796,18 +966,15 @@ function VacationEmployeeManager({ allUsers }: { allUsers: UserWithVacationInfo[
                   <div style={{ fontSize: 10.5, color: "var(--nc-mute)" }}>{u.email}</div>
                 </div>
 
-                {!isEditing && (
+                {!isEditing && !isConfirmingDelete && (
                   <>
                     {u.vacation_area ? (
-                      <span
-                        style={{
-                          display: "inline-flex", alignItems: "center", gap: 5,
-                          padding: "3px 8px", borderRadius: 99, fontSize: 10.5,
-                          background: areaColor(u.vacation_area) + "22",
-                          color: areaColor(u.vacation_area),
-                          fontWeight: 600,
-                        }}
-                      >
+                      <span style={{
+                        display: "inline-flex", alignItems: "center", gap: 5,
+                        padding: "3px 8px", borderRadius: 99, fontSize: 10.5,
+                        background: areaColor(u.vacation_area) + "22",
+                        color: areaColor(u.vacation_area), fontWeight: 600,
+                      }}>
                         <span style={{ width: 6, height: 6, borderRadius: "50%", background: "currentColor" }} />
                         {VACATION_AREAS[u.vacation_area]?.label}
                       </span>
@@ -826,7 +993,34 @@ function VacationEmployeeManager({ allUsers }: { allUsers: UserWithVacationInfo[
                     >
                       Editar
                     </button>
+                    <button
+                      className="nc-btn ghost"
+                      style={{ fontSize: 11, padding: "4px 8px", color: "var(--nc-danger)" }}
+                      onClick={() => setConfirmDeleteId(u.id)}
+                      title="Dar de baja"
+                    >
+                      <IX size={12} />
+                    </button>
                   </>
+                )}
+
+                {isConfirmingDelete && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 11.5, color: "var(--nc-danger)", fontWeight: 500 }}>
+                      ¿Dar de baja a {u.name}? Se borrarán sus datos.
+                    </span>
+                    <button className="nc-btn secondary" onClick={() => setConfirmDeleteId(null)}>
+                      Cancelar
+                    </button>
+                    <button
+                      className="nc-btn"
+                      style={{ background: "var(--nc-danger)", color: "white", padding: "6px 12px", borderRadius: "var(--r-sm)", fontSize: 12 }}
+                      onClick={() => handleDelete(u.id)}
+                      disabled={savePending}
+                    >
+                      {savePending ? "Eliminando…" : "Confirmar baja"}
+                    </button>
+                  </div>
                 )}
               </div>
 
@@ -848,23 +1042,18 @@ function VacationEmployeeManager({ allUsers }: { allUsers: UserWithVacationInfo[
                   </select>
 
                   <label style={{ fontSize: 11.5, fontWeight: 600, display: "block", marginBottom: 6 }}>
-                    Conflictos adicionales (áreas con las que tampoco puede coincidir)
+                    Conflictos adicionales
                   </label>
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
                     {VACATION_AREA_LIST.filter((a) => a.id !== editArea).map((a) => {
                       const on = editExtras.includes(a.id);
                       return (
-                        <button
-                          key={a.id}
-                          onClick={() => toggleExtra(a.id)}
-                          style={{
-                            padding: "3px 10px", borderRadius: 99,
-                            fontSize: 10.5, fontWeight: 500, cursor: "pointer",
-                            border: `1.5px solid ${on ? a.color : "var(--nc-line)"}`,
-                            background: on ? a.color + "22" : "transparent",
-                            color: on ? a.color : "var(--nc-text)",
-                          }}
-                        >
+                        <button key={a.id} onClick={() => toggleExtra(a.id)} style={{
+                          padding: "3px 10px", borderRadius: 99, fontSize: 10.5, fontWeight: 500,
+                          border: `1.5px solid ${on ? a.color : "var(--nc-line)"}`,
+                          background: on ? a.color + "22" : "transparent",
+                          color: on ? a.color : "var(--nc-text)", cursor: "pointer",
+                        }}>
                           {a.label}
                         </button>
                       );
@@ -872,20 +1061,12 @@ function VacationEmployeeManager({ allUsers }: { allUsers: UserWithVacationInfo[
                   </div>
 
                   {saveError && (
-                    <div style={{ color: "var(--nc-danger)", fontSize: 11.5, marginBottom: 10 }}>
-                      {saveError}
-                    </div>
+                    <div style={{ color: "var(--nc-danger)", fontSize: 11.5, marginBottom: 10 }}>{saveError}</div>
                   )}
 
                   <div style={{ display: "flex", gap: 8 }}>
-                    <button className="nc-btn secondary" onClick={() => setEditingId(null)}>
-                      Cancelar
-                    </button>
-                    <button
-                      className="nc-btn primary"
-                      onClick={() => handleSave(u.id)}
-                      disabled={savePending}
-                    >
+                    <button className="nc-btn secondary" onClick={() => setEditingId(null)}>Cancelar</button>
+                    <button className="nc-btn primary" onClick={() => handleSave(u.id)} disabled={savePending}>
                       {savePending ? "Guardando…" : "Guardar"}
                     </button>
                   </div>

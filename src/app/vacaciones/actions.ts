@@ -110,6 +110,57 @@ export async function rejectVacation(requestId: number, notes?: string) {
   return { success: true };
 }
 
+/** Crear un nuevo empleado */
+export async function createEmployee(data: {
+  name: string;
+  email: string;
+  password: string;
+  vacation_area: VacationAreaId | null;
+  vacation_conflict_extras: VacationAreaId[];
+}) {
+  const user = await requireAdmin();
+  if (!user) return { error: "Sin permisos" };
+
+  const admin = createAdminClient();
+  const { data: created, error } = await admin.auth.admin.createUser({
+    email: data.email,
+    password: data.password,
+    email_confirm: true,
+    user_metadata: {
+      name: data.name,
+      ...(data.vacation_area ? { vacation_area: data.vacation_area } : {}),
+      ...(data.vacation_conflict_extras.length > 0
+        ? { vacation_conflict_extras: data.vacation_conflict_extras }
+        : {}),
+    },
+  });
+
+  if (error) {
+    if (error.message.includes("already registered"))
+      return { error: "Ya existe un usuario con ese email" };
+    return { error: error.message };
+  }
+
+  revalidatePath("/vacaciones");
+  return { success: true, userId: created.user.id };
+}
+
+/** Dar de baja (eliminar) un empleado */
+export async function deleteEmployee(userId: string) {
+  const user = await requireAdmin();
+  if (!user) return { error: "Sin permisos" };
+
+  // No permitir que un admin se elimine a sí mismo
+  if (userId === user.id) return { error: "No puedes eliminarte a ti mismo" };
+
+  const admin = createAdminClient();
+  const { error } = await admin.auth.admin.deleteUser(userId);
+  if (error) return { error: error.message };
+
+  revalidatePath("/vacaciones");
+  return { success: true };
+}
+
 /** Actualizar área de vacaciones y reglas extra de un empleado */
 export async function updateUserVacationArea(
   userId: string,
