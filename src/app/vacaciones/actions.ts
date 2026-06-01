@@ -3,8 +3,44 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getISOWeek, getISOYear, weekStartFromDate } from "@/lib/vacation-rules";
+import { getISOYear, weekStartFromDate, formatWeekRange } from "@/lib/vacation-rules";
 import type { VacationAreaId } from "@/lib/vacation-rules";
+
+// ─── Helpers de notificación ──────────────────────────────────────────────
+
+/** Inserta notificaciones en la tabla notifications para una lista de usuarios */
+async function insertNotifications(
+  userIds: string[],
+  text: string,
+  type: string,
+) {
+  if (userIds.length === 0) return;
+  const admin = createAdminClient();
+  await admin.from("notifications").insert(
+    userIds.map((uid) => ({ user_id: uid, text, type, read: false })),
+  );
+}
+
+/** Devuelve los IDs de todos los admins del sistema */
+async function getAdminIds(): Promise<string[]> {
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from("profiles")
+    .select("id")
+    .eq("role", "admin");
+  return (data ?? []).map((p: { id: string }) => p.id);
+}
+
+/** Nombre del usuario a partir de su ID (via profiles) */
+async function getUserName(userId: string): Promise<string> {
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from("profiles")
+    .select("name")
+    .eq("id", userId)
+    .single();
+  return (data as { name?: string } | null)?.name ?? "Un empleado";
+}
 
 // ─── Empleado ─────────────────────────────────────────────────────────────
 
@@ -31,6 +67,18 @@ export async function requestVacation(weekStart: string, requestNotes?: string) 
     if (error.code === "23505") return { error: "Ya tienes una solicitud para esa semana" };
     return { error: error.message };
   }
+
+  // Notificar a todos los admins
+  const [adminIds, name] = await Promise.all([
+    getAdminIds(),
+    getUserName(user.id),
+  ]);
+  const weekLabel = formatWeekRange(monday);
+  await insertNotifications(
+    adminIds.filter((id) => id !== user.id),
+    `${name} ha solicitado vacaciones — semana del ${weekLabel}`,
+    "vacation_request",
+  );
 
   revalidatePath("/vacaciones");
   return { success: true };
@@ -72,6 +120,14 @@ export async function approveVacation(requestId: number, notes?: string) {
   if (!user) return { error: "Sin permisos" };
 
   const admin = createAdminClient();
+
+  // Obtener la solicitud antes de actualizar para saber a quién notificar
+  const { data: req } = await admin
+    .from("vacation_requests")
+    .select("user_id, week_start")
+    .eq("id", requestId)
+    .single();
+
   const { error } = await admin
     .from("vacation_requests")
     .update({
@@ -84,6 +140,17 @@ export async function approveVacation(requestId: number, notes?: string) {
 
   if (error) return { error: error.message };
 
+  // Notificar al empleado
+  if (req) {
+    const weekLabel = formatWeekRange((req as { week_start: string }).week_start);
+    const notesText = notes ? ` — "${notes}"` : "";
+    await insertNotifications(
+      [(req as { user_id: string }).user_id],
+      `✓ Tus vacaciones de la semana del ${weekLabel} han sido aprobadas${notesText}`,
+      "vacation_approved",
+    );
+  }
+
   revalidatePath("/vacaciones");
   return { success: true };
 }
@@ -94,6 +161,14 @@ export async function rejectVacation(requestId: number, notes?: string) {
   if (!user) return { error: "Sin permisos" };
 
   const admin = createAdminClient();
+
+  // Obtener la solicitud antes de actualizar
+  const { data: req } = await admin
+    .from("vacation_requests")
+    .select("user_id, week_start")
+    .eq("id", requestId)
+    .single();
+
   const { error } = await admin
     .from("vacation_requests")
     .update({
@@ -105,6 +180,17 @@ export async function rejectVacation(requestId: number, notes?: string) {
     .eq("id", requestId);
 
   if (error) return { error: error.message };
+
+  // Notificar al empleado
+  if (req) {
+    const weekLabel = formatWeekRange((req as { week_start: string }).week_start);
+    const notesText = notes ? ` — "${notes}"` : "";
+    await insertNotifications(
+      [(req as { user_id: string }).user_id],
+      `✗ Tu solicitud de vacaciones (semana del ${weekLabel}) ha sido rechazada${notesText}`,
+      "vacation_rejected",
+    );
+  }
 
   revalidatePath("/vacaciones");
   return { success: true };
