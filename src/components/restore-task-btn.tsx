@@ -2,7 +2,7 @@
 
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { updateTaskState } from "@/app/tablero/actions";
+import { restoreTask } from "@/app/tareas/[id]/actions";
 
 export function RestoreTaskBtn({ taskId }: { taskId: number }) {
   const router = useRouter();
@@ -10,7 +10,7 @@ export function RestoreTaskBtn({ taskId }: { taskId: number }) {
 
   function handleClick() {
     startTransition(async () => {
-      await updateTaskState(taskId, "pending");
+      await restoreTask(taskId);
       router.refresh();
     });
   }

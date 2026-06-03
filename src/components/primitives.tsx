@@ -68,6 +68,7 @@ export function State({ s }: { s: TaskState }) {
     pending: "Pendiente",
     progress: "En curso",
     done: "Completada",
+    archived: "Archivada",
   };
   return (
     <span className={`nc-state ${s}`}>

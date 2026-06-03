@@ -6,8 +6,9 @@ import { FileUpload } from "@/components/file-upload";
 import { CommentBox } from "@/components/comment-box";
 import { DeleteTaskBtn } from "@/components/delete-task-btn";
 import { EditTaskBtn } from "@/components/edit-task-btn";
+import { ArchiveTaskBtn } from "@/components/archive-task-btn";
 import { SubtasksPanel } from "@/components/subtasks-panel";
-import { ICheck, IChev, IEye, ILock } from "@/components/icons";
+import { IChev, IEye, ILock } from "@/components/icons";
 import {
   getTask, getTaskComments, getTaskFiles, getSignedUrl, getTaskActivity,
   getTaskSubtasks, markTaskNotificationsRead,
@@ -82,9 +83,7 @@ export default async function TaskDetailPage({
           <button className="nc-btn ghost" style={{ fontSize: 11.5 }}>
             <IEye size={12} /> Seguir
           </button>
-          <button className="nc-btn primary" style={{ fontSize: 11.5 }}>
-            <ICheck size={12} /> Archivar
-          </button>
+          <ArchiveTaskBtn taskId={taskId} />
           <EditTaskBtn
             taskId={taskId}
             team={teamPicks}

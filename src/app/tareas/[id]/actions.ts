@@ -256,6 +256,53 @@ export async function updateTask(taskId: number, fields: UpdateFields) {
   return { success: true };
 }
 
+export async function archiveTask(taskId: number) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "No autenticado" };
+
+  const admin = createAdminClient();
+  const { error } = await admin
+    .from("tasks")
+    .update({ state: "archived" })
+    .eq("id", taskId);
+
+  if (error) {
+    await logError("Error al archivar tarea", {
+      context: { message: error.message, taskId },
+      path: `/tareas/${taskId}`,
+      userId: user.id,
+    });
+    return { error: error.message };
+  }
+
+  revalidatePath("/tablero");
+  revalidatePath("/");
+  revalidatePath("/mis-tareas");
+  revalidatePath("/archivo");
+  redirect("/archivo");
+}
+
+export async function restoreTask(taskId: number) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "No autenticado" };
+
+  const admin = createAdminClient();
+  const { error } = await admin
+    .from("tasks")
+    .update({ state: "pending" })
+    .eq("id", taskId);
+
+  if (error) return { error: error.message };
+
+  revalidatePath("/tablero");
+  revalidatePath("/");
+  revalidatePath("/mis-tareas");
+  revalidatePath("/archivo");
+  return { success: true };
+}
+
 export async function deleteTask(taskId: number) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();

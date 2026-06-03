@@ -66,6 +66,7 @@ export async function getTasks(): Promise<Task[]> {
     supabase
       .from("tasks")
       .select(SELECT_TASK)
+      .neq("state", "archived")
       .order("created_at", { ascending: false }),
     user ? getUnreadTaskIdSet(supabase, user.id) : Promise.resolve(new Set<number>()),
   ]);
@@ -116,6 +117,7 @@ export async function getMyTasks(): Promise<Task[]> {
       .from("tasks")
       .select(SELECT_TASK)
       .in("id", taskIds)
+      .neq("state", "archived")
       .order("due_date", { ascending: true, nullsFirst: false }),
     getUnreadTaskIdSet(supabase, user.id),
   ]);
@@ -232,7 +234,7 @@ export async function getArchivedTasks(): Promise<ArchivedTask[]> {
       task_assignees(user_id, profiles(name)),
       files(id, name, storage_path)
     `)
-    .eq("state", "done")
+    .eq("state", "archived")
     .order("created_at", { ascending: false });
 
   if (!tasks) return [];
@@ -299,9 +301,12 @@ export async function getTaskActivity(taskId: number): Promise<ActivityEntry[]> 
 
 export async function getMyNotifications() {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return [];
   const { data } = await supabase
     .from("notifications")
     .select("id, text, type, read, created_at")
+    .eq("user_id", user.id)
     .order("created_at", { ascending: false })
     .limit(10);
   return data ?? [];
