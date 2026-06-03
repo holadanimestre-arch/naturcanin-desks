@@ -112,7 +112,7 @@ export default async function TaskDetailPage({
               {t.title}
             </h1>
             {t.desc && (
-              <p style={{ fontSize: 13, color: "var(--nc-text)", marginBottom: 20, maxWidth: 560, lineHeight: 1.55 }}>
+              <p style={{ fontSize: 13, color: "var(--nc-text)", marginBottom: 20, maxWidth: 560, lineHeight: 1.55, whiteSpace: "pre-wrap" }}>
                 {t.desc}
               </p>
             )}
