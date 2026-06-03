@@ -66,7 +66,7 @@ export async function getTasks(): Promise<Task[]> {
     supabase
       .from("tasks")
       .select(SELECT_TASK)
-      .neq("state", "archived")
+      .eq("archived", false)
       .order("created_at", { ascending: false }),
     user ? getUnreadTaskIdSet(supabase, user.id) : Promise.resolve(new Set<number>()),
   ]);
@@ -117,7 +117,7 @@ export async function getMyTasks(): Promise<Task[]> {
       .from("tasks")
       .select(SELECT_TASK)
       .in("id", taskIds)
-      .neq("state", "archived")
+      .eq("archived", false)
       .order("due_date", { ascending: true, nullsFirst: false }),
     getUnreadTaskIdSet(supabase, user.id),
   ]);
@@ -234,7 +234,7 @@ export async function getArchivedTasks(): Promise<ArchivedTask[]> {
       task_assignees(user_id, profiles(name)),
       files(id, name, storage_path)
     `)
-    .eq("state", "archived")
+    .eq("archived", true)
     .order("created_at", { ascending: false });
 
   if (!tasks) return [];

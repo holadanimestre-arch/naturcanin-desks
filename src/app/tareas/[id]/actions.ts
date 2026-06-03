@@ -264,7 +264,7 @@ export async function archiveTask(taskId: number) {
   const admin = createAdminClient();
   const { error } = await admin
     .from("tasks")
-    .update({ state: "archived" })
+    .update({ archived: true })
     .eq("id", taskId);
 
   if (error) {
@@ -291,7 +291,7 @@ export async function restoreTask(taskId: number) {
   const admin = createAdminClient();
   const { error } = await admin
     .from("tasks")
-    .update({ state: "pending" })
+    .update({ archived: false, state: "pending" })
     .eq("id", taskId);
 
   if (error) return { error: error.message };

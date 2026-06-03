@@ -1,7 +1,7 @@
 export type PersonId = "lau" | "car" | "ana" | "pab" | "mar" | "jor";
 export type TagKey = "fabricacion" | "logistica" | "comercial" | "administrativo" | "calidad" | "marketing" | "compras" | "gerencia";
 export type Priority = "high" | "med" | "low";
-export type TaskState = "pending" | "progress" | "done" | "archived";
+export type TaskState = "pending" | "progress" | "done";
 
 export type Person = {
   id: PersonId;
