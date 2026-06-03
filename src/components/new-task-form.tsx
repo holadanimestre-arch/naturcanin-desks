@@ -137,11 +137,14 @@ export function NewTaskForm({
       >
         <div
           style={{
-            width: "100%", maxWidth: 520,
+            width: "100%", maxWidth: 860,
             background: "var(--nc-surface)",
             borderRadius: "var(--r-lg)",
             boxShadow: "0 20px 60px rgba(0,0,0,0.25)",
             overflow: "hidden",
+            display: "flex",
+            flexDirection: "column",
+            maxHeight: "calc(100vh - 48px)",
           }}
         >
           <div
@@ -157,7 +160,7 @@ export function NewTaskForm({
             </Link>
           </div>
 
-          <form onSubmit={handleSubmit} style={{ padding: "16px 18px" }}>
+          <form onSubmit={handleSubmit} style={{ padding: "16px 18px", overflow: "auto", flex: 1 }}>
             <input
               name="title"
               className="nc-input"
@@ -170,8 +173,8 @@ export function NewTaskForm({
               name="desc"
               className="nc-input"
               placeholder="Descripción (opcional)…"
-              rows={3}
-              style={{ border: "none", padding: "4px 0", fontSize: 12.5, color: "var(--nc-text)", resize: "none" }}
+              rows={8}
+              style={{ border: "none", padding: "4px 0", fontSize: 12.5, color: "var(--nc-text)", resize: "vertical", minHeight: 140 }}
             />
 
             <div
